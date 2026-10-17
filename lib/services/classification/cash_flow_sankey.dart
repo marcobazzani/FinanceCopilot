@@ -24,6 +24,10 @@ enum CashFlowNodeKind {
   /// Ledger spending without a category: tracked, not yet classified.
   uncategorized,
 
+  /// What a spread saving plan set aside in the year (the ledger's "Saving
+  /// for X" rows): tracked spending, one node per plan.
+  savingPlan,
+
   /// Expenses the ledger does not contain at all (cash, accounts never
   /// imported): yearly expenses − ledger spending.
   untrackedExpenses,
@@ -43,7 +47,10 @@ class CashFlowNode {
   final int layer;
   final double value;
   final int? categoryId;
-  const CashFlowNode({required this.id, required this.kind, required this.layer, required this.value, this.categoryId});
+
+  /// The spread event a [CashFlowNodeKind.savingPlan] node stands for.
+  final String? eventName;
+  const CashFlowNode({required this.id, required this.kind, required this.layer, required this.value, this.categoryId, this.eventName});
 
   @override
   String toString() => '$id=$value';
@@ -59,16 +66,16 @@ class CashFlowLink {
   String toString() => '$from->$to=$value';
 }
 
-/// One year of cash flow as a Sankey graph:
+/// One year — or one month of it — of cash flow as a Sankey graph:
 /// income (+ refunds, + untracked income, + from savings) → available → essential /
-/// discretionary / uncategorized / untracked expenses / saved → expense
-/// categories.
+/// discretionary / saving plans / uncategorized / untracked expenses / saved →
+/// expense categories.
 ///
-/// [income], [savings] and [expenses] are the yearly Income/Expense/Savings
+/// [income], [savings] and [expenses] are the period's Income/Expense/Savings
 /// figures (expenses = income − savings), so both charts always agree. The
-/// ledger splits the expenses into categorized and uncategorized spending
-/// (tracked either way), and the gap between ledger spending and the yearly
-/// expenses is always shown explicitly, never spread or dropped:
+/// ledger splits the expenses into categorized, saving-plan and uncategorized
+/// spending (tracked all three), and the gap between ledger spending and the
+/// period's expenses is always shown explicitly, never spread or dropped:
 /// ledger < expenses → the rest is "untracked expenses" (not in the ledger);
 /// ledger > expenses → the excess is "untracked income" (money spent that no
 /// Income record accounts for).
@@ -85,6 +92,10 @@ class CashFlowSankey {
   /// Ledger spending of the year without a category.
   final double uncategorized;
 
+  /// What the spread saving plans set aside in the year: the ledger's "Saving
+  /// for X" rows. The yearly savings already went down by them.
+  final double savingPlans;
+
   /// Refunds received in the ledger in the year.
   final double refunds;
 
@@ -95,11 +106,12 @@ class CashFlowSankey {
     required this.savings,
     required this.categorized,
     required this.uncategorized,
+    this.savingPlans = 0,
     this.refunds = 0,
   });
 
   /// All spending the ledger holds for the year.
-  double get ledgerSpending => categorized + uncategorized;
+  double get ledgerSpending => categorized + uncategorized + savingPlans;
 
   double get expenses => income - savings;
 
@@ -128,33 +140,43 @@ const _eps = 0.005;
 
 String cashFlowExpenseNodeId(int categoryId) => 'out:$categoryId';
 
-/// [income] and [savings] come from the yearly Income/Expense/Savings bucket
-/// of [year]; [spending] supplies the category split of the expenses.
+String cashFlowSavingPlanNodeId(int eventId) => 'plan:$eventId';
+
+/// [income] and [savings] come from the Income/Expense/Savings bucket of
+/// [year] — of its [month] (1–12), when given; [spending] supplies the
+/// category split of that period's expenses and its spread saving plans.
 ///
 /// Refunds received come from two sources that never hold the same money:
 /// [recordedRefunds] (refund Income records — e.g. the part of a pay slip
 /// that reimburses expenses, booked in the ledger inside the salary row) and
-/// the ledger's refund inflows ([SpendingByCategoryData.refunds]). Both land
-/// in savings, so both explain spending the yearly expenses net out.
+/// the ledger's refund inflows ([SpendingPeriod.refunds]). Both land in
+/// savings, so both explain spending the period's expenses net out.
 CashFlowSankey buildCashFlowSankey({
   required int year,
+  int? month,
   required double income,
   required double savings,
   double recordedRefunds = 0,
   required SpendingByCategoryData spending,
   required Map<int, Category> categories,
 }) {
+  final period = spending.period(year, month);
   final named =
       <MapEntry<int, double>>[
-        for (final e in (spending.byYear[year] ?? const <int?, double>{}).entries)
+        for (final e in period.byCategory.entries)
           if (e.key != null && e.value >= _eps) MapEntry(e.key!, e.value),
       ]..sort((a, b) {
         final c = b.value.compareTo(a.value);
         return c != 0 ? c : a.key.compareTo(b.key);
       });
   final categorized = named.fold(0.0, (a, e) => a + e.value);
-  final uncategorized = spending.amount(year, null);
-  final refunds = spending.refunds(year) + recordedRefunds;
+  final uncategorized = period.amount(null);
+  final plans = [
+    for (final p in period.savingPlans)
+      if (p.amount >= _eps) p,
+  ];
+  final savingPlans = plans.fold(0.0, (a, p) => a + p.amount);
+  final refunds = period.refunds + recordedRefunds;
   final expenses = income - savings;
 
   CashFlowSankey result(List<CashFlowNode> nodes, List<CashFlowLink> links) => CashFlowSankey(
@@ -164,13 +186,14 @@ CashFlowSankey buildCashFlowSankey({
     savings: savings,
     categorized: categorized,
     uncategorized: uncategorized,
+    savingPlans: savingPlans,
     refunds: refunds,
   );
 
-  if (income.abs() < _eps && savings.abs() < _eps && categorized + uncategorized < _eps) return result(const [], const []);
+  if (income.abs() < _eps && savings.abs() < _eps && categorized + uncategorized + savingPlans < _eps) return result(const [], const []);
   // Balance: income + refunds + untracked income (+ from savings) =
   // ledger spending + saved + untracked expenses.
-  final untrackedIncome = categorized + uncategorized - refunds - expenses;
+  final untrackedIncome = categorized + uncategorized + savingPlans - refunds - expenses;
 
   final nodes = <CashFlowNode>[];
   final links = <CashFlowLink>[];
@@ -220,6 +243,11 @@ CashFlowSankey buildCashFlowSankey({
     for (final e in named)
       if (categories[e.key]?.isEssential != true) e,
   ]);
+  for (final p in plans) {
+    final id = cashFlowSavingPlanNodeId(p.eventId);
+    nodes.add(CashFlowNode(id: id, kind: CashFlowNodeKind.savingPlan, layer: 2, value: p.amount, eventName: p.name));
+    links.add(CashFlowLink(total, id, p.amount));
+  }
   if (uncategorized >= _eps) {
     nodes.add(CashFlowNode(id: 'grp:uncategorized', kind: CashFlowNodeKind.uncategorized, layer: 2, value: uncategorized));
     links.add(CashFlowLink(total, 'grp:uncategorized', uncategorized));

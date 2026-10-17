@@ -180,21 +180,57 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     required NumberFormat rowAmtFmt,
     required DateFormat dateFmt,
     required Map<int, String> accountNameById,
+    required Map<int, Category> categoriesById,
+    required Map<int, LedgerRole>? roles,
     required AppStrings s,
     String? adjustedLabel,
   }) {
     final isCancelled = tx.status == TransactionStatus.cancelled;
+    final scheme = Theme.of(context).colorScheme;
+    // A row takes a category unless the ledger explains it (a transfer, no-op,
+    // adjustment or cancelled row): unknown (null) until the roles have loaded.
+    final role = roles?[tx.id];
+    final takesCategory = roles == null ? null : role == null;
+    final category = tx.categoryId == null ? null : categoriesById[tx.categoryId];
+    Text categoryText(String text, {bool muted = false, bool italic = false}) => Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: muted ? null : FontWeight.w600,
+        fontStyle: italic ? FontStyle.italic : null,
+        color: muted ? scheme.outline : scheme.onSurfaceVariant,
+      ),
+    );
+    final Widget leading;
+    final Widget? categoryLine;
+    if (takesCategory == true) {
+      // The category's badge, or the "uncategorized" one: tap to classify.
+      leading = CategoryAvatar(
+        key: ValueKey('txCategory:${tx.id}'),
+        category: category,
+        tooltip: s.classifyTransaction,
+        onTap: () => showTransactionClassifySheet(context, tx: tx, title: s.classifyTransaction, accountId: tx.accountId),
+      );
+      categoryLine = category == null ? categoryText(s.uncategorized, muted: true) : categoryText(categoryLabel(category, s));
+    } else if (takesCategory == null && category != null) {
+      // Roles still loading: the category shows, nothing to classify yet.
+      leading = CategoryAvatar(category: category);
+      categoryLine = categoryText(categoryLabel(category, s));
+    } else {
+      leading = RowIconBadge(
+        icon: isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+        color: isPositive ? Colors.green : Colors.red,
+        tint: 0.1,
+      );
+      // Why it takes no category, unless a badge of the row already says so.
+      final saidByBadge = role == LedgerRole.cancelled || (role == LedgerRole.adjustment && adjustedLabel != null);
+      categoryLine = role == null || saidByBadge ? null : categoryText(s.ledgerRoleName(role), muted: true, italic: true);
+    }
     final tile = ListTile(
       dense: true,
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-        child: Icon(
-          isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-          size: 16,
-          color: isPositive ? Colors.green : Colors.red,
-        ),
-      ),
+      leading: leading,
       title: Row(
         children: [
           Flexible(
@@ -245,32 +281,35 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
           ],
         ],
       ),
-      subtitle: _isReadOnly
-          ? Row(
-              children: [
-                Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      accountNameById[tx.accountId] ?? '#${tx.accountId}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context).colorScheme.onSecondaryContainer,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+      // The date, the category (or why the row takes none) and, in the
+      // All-accounts view, the account.
+      subtitle: Row(
+        children: [
+          Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
+          if (categoryLine != null) ...[const SizedBox(width: 8), Flexible(child: categoryLine)],
+          if (_isReadOnly) ...[
+            const SizedBox(width: 6),
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(4),
                 ),
-              ],
-            )
-          : Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
+                child: Text(
+                  accountNameById[tx.accountId] ?? '#${tx.accountId}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

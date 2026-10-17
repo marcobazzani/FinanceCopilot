@@ -28,6 +28,20 @@ extension _ResultStep on _ImportScreenState {
               _resultRow(s.importedLabel, '${r.importedRows}', color: Colors.green),
               if (r.deletedRows > 0) _resultRow(s.replacedOverlap, '${r.deletedRows}', color: Colors.orange),
               if (r.errorRows > 0) _resultRow(s.skippedLabel, '${r.errorRows}', color: Colors.red),
+              if (_openingBalanceAdded != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(width: 180, child: Text(s.openingBalanceLabel)),
+                      PrivacyText(
+                        '${_openingBalanceAdded! >= 0 ? '+' : ''}${fmt.amountFormat(locale).format(_openingBalanceAdded!)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                      ),
+                    ],
+                  ),
+                ),
               if (_classifyResult != null) ...[
                 _resultRow(s.categorizedLabel, '${_classifyResult!.changed}', color: Colors.blue),
                 if (_classifyResult!.uncategorizedAfter > 0)

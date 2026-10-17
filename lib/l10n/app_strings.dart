@@ -452,6 +452,40 @@ class AppStrings {
   String get accountNameHint => _it ? 'es. Fineco' : 'e.g. Fineco';
   String get noTransactionsYet => _it ? 'Nessuna transazione' : 'No transactions yet';
   String transactionCount(int n) => _it ? (n == 1 ? '1 transazione' : '$n transazioni') : (n == 1 ? '1 transaction' : '$n transactions');
+
+  // ── Cash Flow: why a figure is what it is ──────────────────
+  String get cfExplainTapHint => _it ? 'Tocca per vedere come è calcolato' : 'Tap to see how it is calculated';
+  String cfExplainTitle(String period, String figure) => '$period · $figure';
+  String get cfExplainFormulaIncome => _it
+      ? 'Entrate = i redditi registrati nel periodo (rimborsi e contributi pensione esclusi)'
+      : 'Income = the income records of the period (refunds and pension contributions excluded)';
+  String get cfExplainFormulaSavings => _it
+      ? 'Risparmi = quanto è cresciuto il totale Risparmio nel periodo − contributi pensione'
+      : 'Savings = how much the Saving total grew over the period − pension contributions';
+  String get cfExplainFormulaExpenses => _it ? 'Uscite = Entrate − Risparmi' : 'Expenses = Income − Savings';
+  String get cfExplainSectionIncome => _it ? 'Redditi registrati' : 'Income records';
+  String get cfExplainSectionTransactions => _it ? 'Movimenti sui conti' : 'Transactions on your accounts';
+  String get cfExplainSectionOpening =>
+      _it ? 'Saldo già presente quando il conto è entrato nel totale' : 'Balance already in the account when it entered the total';
+  String get cfExplainSectionInvestments => _it ? 'Investimenti' : 'Investments';
+  String get cfExplainSectionAdjustments => _it ? 'Rettifiche' : 'Adjustments';
+  String get cfExplainSectionPension => _it ? 'Contributi pensione' : 'Pension contributions';
+  String get cfExplainSectionUnexplained =>
+      _it ? 'Non spiegato dai movimenti (tassi di cambio)' : 'Not explained by the transactions (exchange rates)';
+  String get cfExplainNoIncomeRecords => _it ? 'Nessun reddito registrato in questo periodo.' : 'No income records in this period.';
+  String get cfExplainNothing => _it ? 'Nulla da spiegare in questo periodo.' : 'Nothing to explain in this period.';
+  String get cfExplainTotal => _it ? 'Totale' : 'Total';
+  String cfExplainMismatch(String cell) => _it
+      ? 'Le righe non tornano con la cella, che mostra $cell: segnalalo, è un errore del calcolo.'
+      : 'The rows do not add up to the cell, which shows $cell: please report it, the calculation is wrong.';
+  String get cfExplainRowTapHint => _it ? 'Tocca una riga per vedere da cosa è composta' : 'Tap a row to see what it is made of';
+  String get cfExplainRecordsTitle => _it ? 'Registrazioni' : 'Records';
+  String get cfExplainBalanceFrom => _it ? 'Inizio periodo' : 'Start of the period';
+  String get cfExplainBalanceTo => _it ? 'Fine periodo' : 'End of the period';
+  String get cfExplainChange => _it ? 'Variazione' : 'Change';
+  String get cfExplainEventsInPeriod => _it ? 'Eventi nel periodo' : 'Events in the period';
+  String get cfExplainNoEventsInPeriod =>
+      _it ? 'Nessun evento nel periodo: il valore è cambiato con il prezzo.' : 'No events in the period: the value moved with the price.';
   String since(String d) => _it ? 'Dal $d' : 'Since $d';
   String lastRecord(String d) => _it ? 'Ultimo record $d' : 'Last record $d';
 
@@ -745,8 +779,10 @@ class AppStrings {
   String get notesOptional => _it ? 'Note (opzionale)' : 'Notes (optional)';
   String get stepFrequencyLabel => _it ? 'Frequenza' : 'Frequency';
   String get stepCountLabel => _it ? 'Numero passi' : 'Step count';
+  String get spreadStartLabel => _it ? 'Inizio dilazione' : 'Spread start';
   String spreadPreview(int n, String amt) =>
       _it ? (n == 1 ? '1 passo × $amt' : '$n passi × $amt') : (n == 1 ? '1 step × $amt' : '$n steps × $amt');
+  String spreadNetOfReimbursed(String amt) => _it ? 'Al netto di $amt di rimborsi' : 'Net of $amt reimbursed';
   String get freqWeekly => _it ? 'Settimanale' : 'Weekly';
   String get freqMonthly => _it ? 'Mensile' : 'Monthly';
   String get freqQuarterly => _it ? 'Trimestrale' : 'Quarterly';
@@ -1009,6 +1045,16 @@ class AppStrings {
   String get importPreviewTitle => _it ? 'Anteprima importazione' : 'Import Preview';
   String get predictedBalance => _it ? 'Saldo previsto' : 'Predicted balance';
   String get importAmountSum => _it ? 'Somma importi' : 'Import amount sum';
+
+  // ── Opening balance (a bank export that doesn't start at the account's
+  // beginning): importing it as the account's whole history, the user states
+  // the balance their bank shows, and the app works out an ordinary
+  // transaction that brings it there — see TransactionService.planOpeningBalance.
+  String actualBalanceOn(String date) => _it ? 'Saldo al $date' : 'Balance on $date';
+  String get actualBalanceHelp => _it
+      ? 'Se l\'estratto conto non parte dall\'inizio del conto, inserisci qui il saldo mostrato dalla banca: verrà aggiunta una transazione "Saldo iniziale" per la differenza.'
+      : 'If the statement doesn\'t start at the account\'s beginning, enter the balance your bank shows here: an "Opening balance" transaction is added for the difference.';
+  String get openingBalanceLabel => _it ? 'Saldo iniziale' : 'Opening balance';
 
   // ── Import amount-mode builder ──────────────────────────
   String get amountModeDirect => _it ? 'Diretto' : 'Direct';
@@ -1471,6 +1517,11 @@ class AppStrings {
   String notCategorizableBecause(String role) => _it
       ? 'Non classificabile: $role. Questi movimenti sono già spiegati dal registro e non partecipano alla categorizzazione.'
       : 'Not categorizable: $role. These entries are already explained by the ledger and do not take part in categorization.';
+  // A ledger row's category badge opens the classification card on the row.
+  String get classifyTransaction => _it ? 'Classifica' : 'Classify';
+  String get transactionNotClassifiable => _it
+      ? 'Questa transazione non si può classificare: il registro la spiega già (trasferimento, storno, rettifica o annullata).'
+      : 'This transaction cannot be classified: the ledger already explains it (a transfer, no-op, adjustment or cancelled row).';
 
   // Spending by category chart
   String get spendingByCategoryTitle => _it ? 'Dove vanno i soldi' : 'Where the money goes';
@@ -1489,6 +1540,8 @@ class AppStrings {
   String get sankeyEssential => _it ? 'Essenziali' : 'Essential';
   String get sankeyDiscretionary => _it ? 'Non essenziali' : 'Discretionary';
   String get sankeySaved => _it ? 'Risparmiato' : 'Saved';
+  // The month selector's first choice: no month, the year picked.
+  String get sankeyWholeYear => _it ? 'Tutto l\'anno' : 'Whole year';
   String get sankeySource => _it
       ? 'Entrate, uscite e risparmi come nel grafico annuale; le categorie vengono dai movimenti'
       : 'Income, expenses and savings as in the yearly chart; categories come from the transactions';

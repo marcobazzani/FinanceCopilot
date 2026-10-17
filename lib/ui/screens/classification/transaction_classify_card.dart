@@ -7,6 +7,7 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/classification/rule_service.dart';
 import 'package:finance_copilot/services/classification/transaction_classifier_service.dart';
+import 'package:finance_copilot/services/market/exchange_rate_service.dart' show CachedRateResolver;
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/category_edit_dialog.dart';
 import 'package:finance_copilot/ui/widgets/category_ui.dart';
@@ -425,5 +426,159 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
       if (mounted) setState(() => _busy = false);
       widget.onBusyChanged?.call(false);
     }
+  }
+}
+
+/// What classifying one transaction takes: its merchant group and its sample
+/// rows, the transaction first (see
+/// [TransactionClassifierService.classificationContextFor]).
+typedef ClassificationContext = ({MerchantGroup group, List<Transaction> rows});
+
+/// The [ClassificationContext] of the transaction [transactionId], its group
+/// valued in the base currency once that has loaded. Null when the row is
+/// gone or the ledger explains it (a transfer, no-op, adjustment or cancelled
+/// row): it takes no category.
+Future<ClassificationContext?> loadClassificationContext(WidgetRef ref, int transactionId) {
+  final base = ref.read(baseCurrencyProvider).value;
+  final rates = base == null ? null : CachedRateResolver(ref.read(exchangeRateServiceProvider), base);
+  return ref.read(transactionClassifierServiceProvider).classificationContextFor(transactionId, rate: rates?.getRate, baseCurrency: base);
+}
+
+/// The classification card of one transaction ([target]) under a header —
+/// [leading] (back to a list, or close) and [title] — scrolling in
+/// [controller]: what a sheet shows to classify a row. [onDone] runs on Skip
+/// and once a classification is applied; [accountId] as in
+/// [TransactionClassifyCard].
+class TransactionClassifyPane extends StatelessWidget {
+  final ClassificationContext target;
+  final String title;
+  final Widget leading;
+  final VoidCallback onDone;
+  final ScrollController? controller;
+  final int? accountId;
+
+  const TransactionClassifyPane({
+    super.key,
+    required this.target,
+    required this.title,
+    required this.leading,
+    required this.onDone,
+    this.controller,
+    this.accountId,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      _SheetHeader(leading: leading, title: title),
+      Expanded(
+        child: SingleChildScrollView(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+          child: TransactionClassifyCard(
+            key: ValueKey(('classify', target.rows.first.id)),
+            group: target.group,
+            samples: target.rows,
+            accountId: accountId,
+            onSkip: onDone,
+            onApplied: (_) => onDone(),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+/// The header of a classification sheet: [leading], then [title].
+class _SheetHeader extends StatelessWidget {
+  final Widget leading;
+  final String title;
+  const _SheetHeader({required this.leading, required this.title});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 16, 4),
+    child: Row(
+      children: [
+        leading,
+        Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+      ],
+    ),
+  );
+}
+
+/// Opens a sheet on the classification card of [tx] under [title]. It closes
+/// on Skip and once the classification is applied, and says so when the row
+/// cannot be classified (the ledger explains it). [accountId] lets a rule be
+/// kept to that account.
+Future<void> showTransactionClassifySheet(BuildContext context, {required Transaction tx, required String title, int? accountId}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        builder: (ctx, controller) =>
+            _TransactionClassifySheet(transactionId: tx.id, title: title, accountId: accountId, controller: controller),
+      ),
+    );
+
+class _TransactionClassifySheet extends ConsumerStatefulWidget {
+  final int transactionId;
+  final String title;
+  final int? accountId;
+  final ScrollController controller;
+  const _TransactionClassifySheet({required this.transactionId, required this.title, required this.accountId, required this.controller});
+
+  @override
+  ConsumerState<_TransactionClassifySheet> createState() => _TransactionClassifySheetState();
+}
+
+class _TransactionClassifySheetState extends ConsumerState<_TransactionClassifySheet> {
+  late final Future<ClassificationContext?> _target;
+
+  @override
+  void initState() {
+    super.initState();
+    _target = loadClassificationContext(ref, widget.transactionId);
+  }
+
+  void _close() => Navigator.of(context).pop();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    final close = CloseButton(onPressed: _close);
+    return FutureBuilder<ClassificationContext?>(
+      future: _target,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+        final target = snap.data;
+        if (target != null) {
+          return TransactionClassifyPane(
+            target: target,
+            title: widget.title,
+            leading: close,
+            onDone: _close,
+            controller: widget.controller,
+            accountId: widget.accountId,
+          );
+        }
+        return Column(
+          children: [
+            _SheetHeader(leading: close, title: widget.title),
+            Expanded(
+              child: ListView(
+                controller: widget.controller,
+                padding: const EdgeInsets.all(16),
+                children: [Text(snap.hasError ? s.error(snap.error!) : s.transactionNotClassifiable)],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

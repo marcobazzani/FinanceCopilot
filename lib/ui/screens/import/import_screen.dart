@@ -142,6 +142,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String? _selectedSheet;
   int _skipRows = 0;
   final _skipRowsCtrl = TextEditingController(text: '0');
+
+  /// The balance the user's bank shows, typed in the import preview (opening
+  /// balance — see TransactionService.planOpeningBalance). Empty = not set.
+  final _actualBalanceCtrl = TextEditingController();
+
+  /// The amount of the "Opening balance" transaction the last import added,
+  /// shown on the result screen. Null when none was needed.
+  double? _openingBalanceAdded;
+
   ImportTarget _target = ImportTarget.transaction;
   int? _targetId; // accountId or assetId
   int? _selectedIntermediaryId; // for asset imports
@@ -622,6 +631,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   void dispose() {
     _skipRowsTimer?.cancel();
     _skipRowsCtrl.dispose();
+    _actualBalanceCtrl.dispose();
     super.dispose();
   }
 
@@ -1461,6 +1471,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _selectedSheet = null;
     _skipRows = 0;
     _skipRowsCtrl.text = '0';
+    _actualBalanceCtrl.clear();
+    _openingBalanceAdded = null;
     _amountFormula.clear();
     _target = ImportTarget.transaction;
     _targetId = null;

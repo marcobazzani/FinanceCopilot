@@ -197,7 +197,7 @@ abstract class MarketPriceService {
   // ──────────────────────────────────────────────
 
   /// Date of the first "buy" event for an asset, or null if none.
-  /// Uses value_date per AGENTS.md (canonical "money moved" date) so the
+  /// Uses value_date (the canonical "money moved" date) so the
   /// price-history fetch window starts no later than the actual investment.
   Future<DateTime?> getFirstBuyDate(int assetId) async {
     final row = await db

@@ -119,4 +119,32 @@ void main() {
 
     await db.close();
   });
+
+  // The OS may purge the app's cache directory at any time (macOS empties
+  // `Library/Caches` under disk pressure; path_provider only returns the
+  // path, it never creates it). Every Drive backup and DB export then failed
+  // with "unable to open database file (code 14)" until the app was
+  // reinstalled.
+  test('snapshotToTempFile creates the temp directory when the OS has removed it', () async {
+    final missing = Directory(p.join(tmpDir.path, 'purged', 'net.bazzani.financecopilot'));
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getTemporaryDirectory') return missing.path;
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    expect(missing.existsSync(), isFalse);
+
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker'));
+
+    final path = await db.snapshotToTempFile();
+
+    expect(p.dirname(path), missing.path);
+    final raw = sqlite3.open(path);
+    expect(raw.select('SELECT name FROM intermediaries').map((r) => r['name']), ['Broker']);
+    raw.close();
+
+    await db.close();
+  });
 }

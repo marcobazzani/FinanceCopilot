@@ -113,39 +113,40 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
       margin: const EdgeInsets.only(bottom: 24),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.dashTotals, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            // Column headers
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  const SizedBox(width: 30),
-                  Expanded(child: Text('', style: _headerStyle(theme))),
-                  SizedBox(
-                    width: 110,
-                    child: Text(s.vsATH, style: _headerStyle(theme), textAlign: TextAlign.right),
+        // Below the card, so the figures are measured in the text style they
+        // are drawn in, against the width the rows actually get.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final widths = _columnWidths(context, constraints.maxWidth, rows, amtFmt, s, theme);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.dashTotals, style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                // Column headers
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: _leadWidth),
+                      Expanded(child: Text('', style: _headerStyle(theme))),
+                      _figureCell(widths.delta, Text(s.vsATH, style: _headerStyle(theme))),
+                      _figureCell(widths.value, Text(s.value, style: _headerStyle(theme))),
+                    ],
                   ),
-                  SizedBox(
-                    width: 120,
-                    child: Text(s.value, style: _headerStyle(theme), textAlign: TextAlign.right),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ...rows.map((row) => _buildTotalRow(row, amtFmt, theme)),
-            _ExcludedFromTotalNote(excluded, plural: true, top: 8),
-          ],
+                ),
+                const Divider(height: 1),
+                ...rows.map((row) => _buildTotalRow(row, amtFmt, theme, widths)),
+                _ExcludedFromTotalNote(excluded, plural: true, top: 8),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildTotalRow(_TotalRow row, NumberFormat amtFmt, ThemeData theme) {
+  Widget _buildTotalRow(_TotalRow row, NumberFormat amtFmt, ThemeData theme, ({double delta, double value}) widths) {
     final isExpanded = _expandedRow == row.label;
 
     return Column(
@@ -161,35 +162,18 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                   size: 22,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: _leadWidth - 22),
                 Expanded(
                   child: Text(row.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
-                SizedBox(
-                  width: 110,
-                  child: _wrapWithAthTapDetector(
-                    row.label,
-                    row.deltaVsMax.abs() > 0.5
-                        ? PrivacyText(
-                            '${row.deltaVsMax >= 0 ? '+' : ''}${amtFmt.format(row.deltaVsMax)}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: row.deltaVsMax >= 0 ? Colors.green.shade300 : Colors.red.shade300,
-                            ),
-                            textAlign: TextAlign.right,
-                          )
-                        : const SizedBox.shrink(),
+                _wrapWithAthTapDetector(
+                  row.label,
+                  _figureCell(
+                    widths.delta,
+                    row.showsDelta ? PrivacyText(_signed(row.deltaVsMax, amtFmt), style: _deltaStyle(row.deltaVsMax)) : const SizedBox.shrink(),
                   ),
                 ),
-                SizedBox(
-                  width: 120,
-                  child: _signedAmount(
-                    row.total,
-                    amtFmt,
-                    (v) => TextStyle(fontWeight: FontWeight.bold, color: v >= 0 ? Colors.green.shade400 : Colors.red.shade400),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
+                _figureCell(widths.value, _signedAmount(row.total, amtFmt, _totalStyle)),
               ],
             ),
           ),
@@ -236,6 +220,95 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     fontSize: 11,
     fontWeight: FontWeight.w600,
     color: theme.colorScheme.onSurfaceVariant,
+  );
+
+  /// A row's total and its distance from the high, as drawn.
+  static TextStyle _totalStyle(double v) => TextStyle(fontWeight: FontWeight.bold, color: v >= 0 ? Colors.green.shade400 : Colors.red.shade400);
+  static TextStyle _deltaStyle(double v) => TextStyle(fontSize: 11, color: v >= 0 ? Colors.green.shade300 : Colors.red.shade300);
+
+  /// [v] with its sign: the text of every figure of the table.
+  static String _signed(double v, NumberFormat amtFmt) => '${v >= 0 ? '+' : ''}${amtFmt.format(v)}';
+
+  /// What stands for a value that is not known.
+  static const _dash = '—';
+
+  /// The expand icon of a row and the gap after it, ahead of its label.
+  static const _leadWidth = 30.0;
+
+  /// The narrowest the "vs ATH" and "Value" columns are drawn, and the room a
+  /// label keeps when the card is too narrow for the figures.
+  static const _deltaMinWidth = 110.0;
+  static const _valueMinWidth = 120.0;
+  static const _labelMinWidth = 80.0;
+
+  /// The widths of the "vs ATH" and "Value" columns, shared by the header and
+  /// every row: the widest of the header and the figures laid out on one
+  /// line, each in the style it is drawn in, never under the minimum widths —
+  /// fixed widths wrapped a total above a million onto a second line. When
+  /// that leaves a label less than [_labelMinWidth] of the [available] width,
+  /// both columns give up room in proportion and their figures shrink to fit
+  /// ([_figureCell]).
+  ({double delta, double value}) _columnWidths(
+    BuildContext context,
+    double available,
+    List<_TotalRow> rows,
+    NumberFormat amtFmt,
+    AppStrings s,
+    ThemeData theme,
+  ) {
+    final header = _headerStyle(theme);
+    var delta = _widestOnOneLine(context, [
+      (s.vsATH, header),
+      for (final row in rows)
+        if (row.showsDelta) (_signed(row.deltaVsMax, amtFmt), _deltaStyle(row.deltaVsMax)),
+    ], min: _deltaMinWidth);
+    var value = _widestOnOneLine(context, [
+      (s.value, header),
+      for (final row in rows) (row.total == null ? _dash : _signed(row.total!, amtFmt), _totalStyle(row.total ?? 0)),
+    ], min: _valueMinWidth);
+    final room = available - _leadWidth - _labelMinWidth;
+    if (available.isFinite && delta + value > room) {
+      final share = max(room, 0.0) / (delta + value);
+      delta *= share;
+      value *= share;
+    }
+    return (delta: delta, value: value);
+  }
+
+  /// The width the widest of [texts] takes on one line, each in its style as
+  /// a [Text] at [context] draws it, and at least [min].
+  static double _widestOnOneLine(BuildContext context, List<(String, TextStyle)> texts, {required double min}) {
+    final ambient = DefaultTextStyle.of(context).style;
+    final boldText = MediaQuery.boldTextOf(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    var widest = min;
+    for (final (text, style) in texts) {
+      var effective = ambient.merge(style);
+      if (boldText) effective = effective.merge(const TextStyle(fontWeight: FontWeight.bold));
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: effective),
+        textDirection: direction,
+        textScaler: scaler,
+        locale: locale,
+        maxLines: 1,
+      )..layout();
+      widest = max(widest, painter.width);
+      painter.dispose();
+    }
+    return widest.ceilToDouble();
+  }
+
+  /// A cell of the "vs ATH" or "Value" column, [width] wide: [figure]
+  /// right-aligned on one line, scaled down when the column could not be
+  /// made as wide as it ([_columnWidths]) — never wrapped.
+  static Widget _figureCell(double width, Widget figure) => SizedBox(
+    width: width,
+    child: Align(
+      alignment: Alignment.centerRight,
+      child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: figure),
+    ),
   );
 
   static const Map<String, IconData> _seriesIconByPrefix = {
@@ -296,13 +369,8 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
 
   /// A signed amount, position size and masked in privacy mode; a plain grey
   /// dash when [value] is unknown.
-  static Widget _signedAmount(double? value, NumberFormat amtFmt, TextStyle Function(double v) style, {TextAlign? textAlign}) => value == null
-      ? Text(
-          '—',
-          style: style(0).copyWith(color: Colors.grey),
-          textAlign: textAlign,
-        )
-      : PrivacyText('${value >= 0 ? '+' : ''}${amtFmt.format(value)}', style: style(value), textAlign: textAlign);
+  static Widget _signedAmount(double? value, NumberFormat amtFmt, TextStyle Function(double v) style) =>
+      value == null ? Text(_dash, style: style(0).copyWith(color: Colors.grey)) : PrivacyText(_signed(value, amtFmt), style: style(value));
 }
 
 class _TotalRow {
@@ -313,6 +381,10 @@ class _TotalRow {
   final double deltaVsMax; // current - historical max (excluding today)
   final List<ChartSeries> series;
   const _TotalRow(this.label, this.total, this.deltaVsMax, this.series);
+
+  /// Whether the "vs ATH" cell shows [deltaVsMax]: not when the total is
+  /// within half a unit of its high.
+  bool get showsDelta => deltaVsMax.abs() > 0.5;
 }
 
 // ════════════════════════════════════════════════════

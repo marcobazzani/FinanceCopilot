@@ -266,6 +266,11 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
                               for (final y in ieData?.years ?? const <_YearBucket>[])
                                 y.year: (income: y.income, savings: y.savings, refunds: y.refunds),
                             },
+                            // The monthly table's figures, for the month a user may pick.
+                            months: {
+                              for (final y in ieData?.years ?? const <_YearBucket>[])
+                                for (final m in y.months) (y.year, m.month): (income: m.income, savings: m.savings, refunds: m.refunds),
+                            },
                             currentYear: ref.watch(currentDateProvider).year,
                             locale: locale,
                           ),

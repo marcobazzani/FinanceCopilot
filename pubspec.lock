@@ -34,7 +34,7 @@ packages:
     source: hosted
     version: "2.0.0"
   archive:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: archive
       sha256: "6c5bcd986e06b94e3c40244af471750840a3d2341d1f9763a1100a14add517b4"
@@ -285,9 +285,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
-      resolved-ref: "751dfc597c893a0b34eccfe6921f126e03a5c683"
-      url: "https://github.com/justkawal/excel.git"
+      ref: e00270b666aa538a40fd368fbac4ff64ed12f65d
+      resolved-ref: e00270b666aa538a40fd368fbac4ff64ed12f65d
+      url: "https://github.com/marcobazzani/excel.git"
     source: git
     version: "5.0.0"
   extension_google_sign_in_as_googleapis_auth:

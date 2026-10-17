@@ -107,7 +107,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     super.initState();
     final ev = widget.event;
 
-    // Initialize from valueDate per AGENTS.md (canonical "money moved" date).
+    // Initialize from valueDate (the canonical "money moved" date).
     // A new event defaults to today's calendar day, never the clock time (a
     // revalue would materialise its market price at that time).
     _selectedDate = ev?.valueDate ?? dateOnly(DateTime.now());

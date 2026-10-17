@@ -36,6 +36,26 @@ class CategoryService {
   /// The seeded category with [key], or null if the user deleted it.
   Future<Category?> getByKey(String key) => (_db.select(_db.categories)..where((c) => c.key.equals(key))).getSingleOrNull();
 
+  /// Seed key for a positive opening-balance adjustment (see
+  /// TransactionService.planOpeningBalance): money that already existed,
+  /// not something that happened during tracked history.
+  static const openingBalanceIncomeKey = 'otherIncome';
+
+  /// Seed key for a negative one (credit card, overdraft, loan). Outside a
+  /// transfer-type category, a negative amount reads as that year's
+  /// spending (isSpendingCategoryType); Transfer is already excluded there.
+  static const openingBalanceDebtKey = 'transfer';
+
+  /// The category an opening-balance adjustment should get, by [amount]'s
+  /// sign. Null — left uncategorized, never another category guessed —
+  /// when the seeded one was deleted or archived.
+  Future<int?> openingBalanceCategoryFor(double amount) async {
+    final key = amount < 0 ? openingBalanceDebtKey : openingBalanceIncomeKey;
+    final cat = await getByKey(key);
+    if (cat == null || cat.isArchived) return null;
+    return cat.id;
+  }
+
   Future<int> create({
     required String name,
     required CategoryType type,

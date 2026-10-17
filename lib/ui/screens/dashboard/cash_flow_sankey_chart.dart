@@ -1,25 +1,39 @@
 part of 'dashboard_screen.dart';
 
-/// Yearly income and savings, exactly as the Income/Expense/Savings chart
-/// computes them (expenses = income − savings), plus the refund Income
-/// records the savings figure contains.
-typedef CashFlowYearTotals = ({double income, double savings, double refunds});
+/// A period's income and savings, exactly as the Income/Expense/Savings chart
+/// and the monthly table compute them (expenses = income − savings), plus the
+/// refund Income records the savings figure contains.
+typedef CashFlowTotals = ({double income, double savings, double refunds});
 
-/// "Where the money goes": one year of cash flow as a Sankey — income (+ from
-/// savings / untracked income) → available → essential / discretionary /
-/// uncategorized / untracked expenses / saved
-/// → expense categories. The current year is year to date.
+/// [CashFlowTotals] of a year.
+typedef CashFlowYearTotals = CashFlowTotals;
+
+/// "Where the money goes": one year — or, optionally, one month of it — of
+/// cash flow as a Sankey: income (+ from savings / untracked income) →
+/// available → essential / discretionary / saving plans / uncategorized /
+/// untracked expenses / saved → expense categories. The current year is year
+/// to date, its current month month to date.
 ///
-/// Income, savings and expenses are [years] (the yearly chart's figures); the
-/// ledger in [spending] only splits the expenses by category, and what it
-/// does not account for stays visible as untracked income / expenses. Privacy mode
-/// masks the amounts; band widths and percentages (shape, not size) stay.
+/// Income, savings and expenses are [years] — [months] for a month, by (year,
+/// month): the yearly chart's and the monthly table's figures; the ledger in
+/// [spending] only splits the expenses by category and saving plan, and what
+/// it does not account for stays visible as untracked income / expenses.
+/// Privacy mode masks the amounts; band widths, percentages and months
+/// (shape, not size) stay.
 class CashFlowSankeyCard extends ConsumerStatefulWidget {
   final SpendingByCategoryData spending;
   final Map<int, CashFlowYearTotals> years;
+  final Map<(int, int), CashFlowTotals> months;
   final int currentYear;
   final String locale;
-  const CashFlowSankeyCard({super.key, required this.spending, required this.years, required this.currentYear, required this.locale});
+  const CashFlowSankeyCard({
+    super.key,
+    required this.spending,
+    required this.years,
+    this.months = const {},
+    required this.currentYear,
+    required this.locale,
+  });
 
   @override
   ConsumerState<CashFlowSankeyCard> createState() => CashFlowSankeyCardState();
@@ -27,6 +41,9 @@ class CashFlowSankeyCard extends ConsumerStatefulWidget {
 
 class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
   int? _year;
+
+  /// The month picked, 1–12; null for the whole year.
+  int? _month;
 
   /// Live spending data for an open drill-down sheet: the sheet is its own
   /// route and is not rebuilt with this card, so it listens to this instead.
@@ -56,6 +73,10 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     return years.contains(widget.currentYear) ? widget.currentYear : years.last;
   }
 
+  /// Whether [t] (of a year or a month) has anything to show: income, a
+  /// change of savings, or spending in [spent].
+  static bool _hasFlow(CashFlowTotals t, SpendingPeriod spent) => t.income.abs() >= 0.005 || t.savings.abs() >= 0.005 || spent.total >= 0.005;
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -66,7 +87,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
 
     final years = [
       for (final e in widget.years.entries)
-        if (e.value.income.abs() >= 0.005 || e.value.savings.abs() >= 0.005 || d.totalFor(e.key) >= 0.005) e.key,
+        if (_hasFlow(e.value, d.period(e.key))) e.key,
     ]..sort();
     if (years.isEmpty) {
       return Padding(
@@ -76,15 +97,24 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     }
 
     final year = _effectiveYear(years);
-    final totals = widget.years[year]!;
+    // The months of the year with something to show; the one picked stays
+    // picked across years that have it.
+    final months = [
+      for (var m = 1; m <= 12; m++)
+        if (widget.months[(year, m)] case final t? when _hasFlow(t, d.period(year, m))) m,
+    ];
+    final month = months.contains(_month) ? _month : null;
+    final totals = month == null ? widget.years[year]! : widget.months[(year, month)]!;
     final graph = buildCashFlowSankey(
       year: year,
+      month: month,
       income: totals.income,
       savings: totals.savings,
       recordedRefunds: totals.refunds,
       spending: d,
       categories: byId,
     );
+    final spent = d.period(year, month);
     final money = fmt.currencyFormat(widget.locale, currencySymbol(d.baseCurrency), decimalDigits: 0);
     final pct = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 1);
     String yearLabel(int y) => y == widget.currentYear ? '$y ${s.ytdSuffix}' : '$y';
@@ -99,6 +129,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.refunds => Colors.teal.shade400,
       CashFlowNodeKind.untrackedIncome => Colors.green.shade300,
       CashFlowNodeKind.uncategorized => scheme.outlineVariant,
+      CashFlowNodeKind.savingPlan => Colors.amber.shade700,
       CashFlowNodeKind.untrackedExpenses => scheme.outline,
       CashFlowNodeKind.saved => Colors.green.shade600,
     };
@@ -112,6 +143,8 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.refunds => s.sankeyRefunds,
       CashFlowNodeKind.untrackedIncome => s.sankeyUntrackedIncome,
       CashFlowNodeKind.uncategorized => s.uncategorized,
+      // The ledger's own label for these rows.
+      CashFlowNodeKind.savingPlan => s.savingForLabel(n.eventName!),
       CashFlowNodeKind.untrackedExpenses => s.sankeyUntrackedExpenses,
       CashFlowNodeKind.saved => s.sankeySaved,
     };
@@ -151,6 +184,32 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
             ],
           ),
         ),
+        // Optional: a month of the year, the whole year by default.
+        if (months.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  key: const Key('sankeyMonth:all'),
+                  label: Text(s.sankeyWholeYear),
+                  selected: month == null,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _month = null),
+                ),
+                for (final m in months)
+                  ChoiceChip(
+                    key: Key('sankeyMonth:$m'),
+                    label: Text(monthAbbr(m, widget.locale)),
+                    selected: m == month,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() => _month = m),
+                  ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(
@@ -187,7 +246,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
               key: const Key('cashFlowSankey'),
               nodes: specs,
               links: links,
-              onNodeTap: (id) => _onNodeTap(context, nodeById[id]!, year, labelOf(nodeById[id]!)),
+              onNodeTap: (id) => _onNodeTap(context, nodeById[id]!, year, month, labelOf(nodeById[id]!)),
               labelBuilder: (context, spec) {
                 final n = nodeById[spec.id]!;
                 final share = graph.scaleTotal == 0 ? 0.0 : n.value / graph.scaleTotal;
@@ -222,10 +281,10 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (d.transfersExcluded(year) >= 0.005)
+              if (spent.transfersExcluded >= 0.005)
                 // How much money was moved: position size, masked.
                 PrivacyText(
-                  s.sankeyTransfersExcluded(money.format(d.transfersExcluded(year))),
+                  s.sankeyTransfersExcluded(money.format(spent.transfersExcluded)),
                   key: const Key('sankeyTransfersExcluded'),
                   style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                 ),
@@ -241,69 +300,85 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     );
   }
 
-  Future<void> _onNodeTap(BuildContext context, CashFlowNode node, int year, String label) async {
+  /// [month] (1–12) of [year], or the whole year when null.
+  Future<void> _onNodeTap(BuildContext context, CashFlowNode node, int year, int? month, String label) async {
     // The rows summed into the node, from the live data.
     final List<int> Function(SpendingByCategoryData)? idsOf = switch (node.kind) {
-      CashFlowNodeKind.expense => (d) => d.ids(year, node.categoryId),
-      CashFlowNodeKind.uncategorized => (d) => d.ids(year, null),
-      CashFlowNodeKind.refunds => (d) => d.refundIds(year),
+      CashFlowNodeKind.expense => (d) => d.period(year, month).ids(node.categoryId),
+      CashFlowNodeKind.uncategorized => (d) => d.period(year, month).ids(null),
+      CashFlowNodeKind.refunds => (d) => d.period(year, month).refundIds,
       _ => null,
     };
     if (idsOf == null || idsOf(widget.spending).isEmpty) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        builder: (ctx, controller) => _NodeTransactionsSheet(
-          spending: _spendingLive,
-          year: year,
-          idsOf: idsOf,
-          label: label,
-          locale: widget.locale,
-          controller: controller,
-        ),
-      ),
-    );
+    // The node's rows follow the ledger: a row re-classified out of the node
+    // leaves the list.
+    final ids = _MappedListenable(_spendingLive, idsOf);
+    final period = month == null ? '$year' : fmt.monthYearFormat(widget.locale).format(DateTime(year, month));
+    try {
+      await showTransactionsSheet(context, ids: ids, title: '$label · $period', locale: widget.locale);
+    } finally {
+      ids.dispose();
+    }
   }
 }
+
+/// [source] seen through [map]: notifies whenever [source] does.
+class _MappedListenable<S, T> extends ChangeNotifier implements ValueListenable<T> {
+  final ValueListenable<S> source;
+  final T Function(S) map;
+  _MappedListenable(this.source, this.map) {
+    source.addListener(notifyListeners);
+  }
+  @override
+  T get value => map(source.value);
+  @override
+  void dispose() {
+    source.removeListener(notifyListeners);
+    super.dispose();
+  }
+}
+
+/// A list of transactions, biggest first, in a sheet; tapping one swaps the
+/// list for the classification wizard's card in the same sheet (no dialog
+/// over the sheet). [ids] are the rows to list; when it changes (e.g. a row
+/// re-classified out of a Sankey node) the list follows.
+Future<void> showTransactionsSheet(
+  BuildContext context, {
+  required ValueListenable<List<int>> ids,
+  required String title,
+  required String locale,
+}) => showModalBottomSheet<void>(
+  context: context,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: (_) => DraggableScrollableSheet(
+    expand: false,
+    initialChildSize: 0.6,
+    builder: (ctx, controller) => _NodeTransactionsSheet(ids: ids, title: title, locale: locale, controller: controller),
+  ),
+);
 
 /// A node's transactions, biggest first; tapping one swaps the list for the
 /// classification wizard's card in the same sheet (no dialog over the
 /// sheet). Back / Skip / Apply return to the list, which follows the ledger.
 class _NodeTransactionsSheet extends ConsumerStatefulWidget {
-  final ValueListenable<SpendingByCategoryData> spending;
-  final int year;
-
-  /// The node's rows in the given data.
-  final List<int> Function(SpendingByCategoryData) idsOf;
-  final String label;
+  final ValueListenable<List<int>> ids;
+  final String title;
   final String locale;
   final ScrollController controller;
-  const _NodeTransactionsSheet({
-    required this.spending,
-    required this.year,
-    required this.idsOf,
-    required this.label,
-    required this.locale,
-    required this.controller,
-  });
+  const _NodeTransactionsSheet({required this.ids, required this.title, required this.locale, required this.controller});
 
   @override
   ConsumerState<_NodeTransactionsSheet> createState() => _NodeTransactionsSheetState();
 }
 
 class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> {
-  ({MerchantGroup group, List<Transaction> rows})? _classifying;
+  ClassificationContext? _classifying;
   int? _loadingId;
 
   Future<void> _open(Transaction t) async {
     setState(() => _loadingId = t.id);
-    final base = ref.read(baseCurrencyProvider).value;
-    final rates = base == null ? null : CachedRateResolver(ref.read(exchangeRateServiceProvider), base);
-    final ctx = await ref.read(transactionClassifierServiceProvider).classificationContextFor(t.id, rate: rates?.getRate, baseCurrency: base);
+    final ctx = await loadClassificationContext(ref, t.id);
     if (!mounted) return;
     setState(() {
       _loadingId = null;
@@ -318,41 +393,22 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
     final theme = Theme.of(context);
     final c = _classifying;
     if (c != null) {
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 16, 4),
-            child: Row(
-              children: [
-                IconButton(key: const Key('sankeySheetBack'), icon: const Icon(Icons.arrow_back), onPressed: _back),
-                Expanded(child: Text('${widget.label} · ${widget.year}', style: theme.textTheme.titleMedium)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: widget.controller,
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-              child: TransactionClassifyCard(
-                key: ValueKey(('classify', c.rows.first.id)),
-                group: c.group,
-                samples: c.rows,
-                onSkip: _back,
-                onApplied: (_) => _back(),
-              ),
-            ),
-          ),
-        ],
+      return TransactionClassifyPane(
+        target: c,
+        title: widget.title,
+        leading: IconButton(key: const Key('sankeySheetBack'), icon: const Icon(Icons.arrow_back), onPressed: _back),
+        onDone: _back,
+        controller: widget.controller,
       );
     }
 
     final txs = ref.watch(allTransactionsProvider).value ?? const <Transaction>[];
-    return ValueListenableBuilder<SpendingByCategoryData>(
-      valueListenable: widget.spending,
-      builder: (context, spending, _) {
-        // Exactly the rows summed into the node, biggest first (|amount| in
-        // the row's own currency); newest, then id, break ties.
-        final ids = widget.idsOf(spending).toSet();
+    return ValueListenableBuilder<List<int>>(
+      valueListenable: widget.ids,
+      builder: (context, idList, _) {
+        // Exactly the rows asked for, biggest first (|amount| in the row's own
+        // currency); newest, then id, break ties.
+        final ids = idList.toSet();
         final rows = txs.where((t) => ids.contains(t.id)).toList()
           ..sort((a, b) {
             final c = b.amount.abs().compareTo(a.amount.abs());
@@ -366,7 +422,7 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('${widget.label} · ${widget.year} (${rows.length})', style: theme.textTheme.titleMedium),
+              child: Text('${widget.title} (${rows.length})', style: theme.textTheme.titleMedium),
             ),
             Expanded(
               child: ListView.builder(

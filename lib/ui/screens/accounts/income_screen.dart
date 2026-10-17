@@ -233,7 +233,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       builder: (_) => _IncomeFormDialog(
         title: s.editIncomeTitle,
         confirmLabel: s.save,
-        // Display valueDate per AGENTS.md convention (canonical "money moved" date).
+        // Display valueDate (the canonical "money moved" date).
         initialDate: fmt.shortDateFormat(_locale).format(income.valueDate),
         // The locale's own spelling with every digit: the save parses it back
         // with the same locale, so an untouched amount saves unchanged.

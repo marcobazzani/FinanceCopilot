@@ -594,8 +594,8 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     }
     if (event.bufferId != null) {
       for (final r in allReimbursements[event.bufferId!] ?? const <BufferTransaction>[]) {
-        // valueDate per AGENTS.md — chart day-keys use the canonical
-        // "money moved" date, never operation_date.
+        // valueDate: chart day-keys use the canonical "money moved" date,
+        // never operation_date.
         final dayKey = toDayKey(r.valueDate);
         if (!includeDayKey(dayKey)) continue;
         eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) - r.amount.abs();
@@ -730,7 +730,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // record whose currency has no rate that day is left out rather than
   // mis-summed — and counted.
   var rowsWithoutRate = 0;
-  Future<List<(DateTime, double)>> incomeInBase(String sql, {bool Function(int? assetId)? keep}) async {
+  Future<List<(DateTime, double)>> incomeInBase(String sql, {bool Function(int? assetId)? keep, List<int>? ids}) async {
     final converted = <(DateTime, double)>[];
     for (final row in await db.customSelect(sql).get()) {
       if (keep != null && !keep(row.readNullable<int>('asset_id'))) continue;
@@ -742,6 +742,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         continue;
       }
       converted.add((dt, row.read<double>('amount') * rate));
+      ids?.add(row.read<int>('id'));
     }
     return converted;
   }
@@ -750,28 +751,36 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // convert to base currency. Both refund and pensionContribution are
   // money received but not "personal income" — the user reports them in
   // the ledger but doesn't want them inflating salary totals.
-  // Ordered by value_date per AGENTS.md convention — operation_date is
+  // Ordered by value_date (the date the money moved) — operation_date is
   // only for import dedup, never for display/aggregation.
   final incomeByMonth = <(int, int), double>{};
   final monthsWithIncomeData = <(int, int)>{};
-  for (final (dt, amount) in await incomeInBase(
-    "SELECT value_date AS date, amount, currency FROM incomes "
+  final incomeRecords = <ExplainRecord>[];
+  final incomeIds = <int>[];
+  final incomeRows = await incomeInBase(
+    "SELECT id, value_date AS date, amount, currency FROM incomes "
     "WHERE type NOT IN ('refund', 'pensionContribution') "
     "ORDER BY value_date ASC",
-  )) {
+    ids: incomeIds,
+  );
+  for (final (i, (dt, amount)) in incomeRows.indexed) {
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount;
     monthsWithIncomeData.add(key);
+    incomeRecords.add((id: incomeIds[i], date: dt, amount: amount));
   }
 
   // 1b. Refund Income records: money received that is not personal income
   // but lands in the bank, so it is inside the savings change and lowers
-  // the derived expenses. Kept per year so the cash-flow Sankey can show it.
+  // the derived expenses. Kept per year and per month so the cash-flow
+  // Sankey can show it.
   final refundByYear = <int, double>{};
+  final refundByMonth = <(int, int), double>{};
   for (final (dt, amount) in await incomeInBase(
     "SELECT value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
   )) {
     refundByYear[dt.year] = (refundByYear[dt.year] ?? 0) + amount;
+    refundByMonth[(dt.year, dt.month)] = (refundByMonth[(dt.year, dt.month)] ?? 0) + amount;
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -803,10 +812,12 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // Only subtract contribution rows whose asset is actually included in
   // the resolved Saving total. If a pension fund is excluded from Saving,
   // subtracting its mirrored income rows here would double-exclude it.
+  final pensionIds = <int>[];
   final pensionRows = await incomeInBase(
-    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
+    "SELECT id, value_date AS date, amount, currency, asset_id FROM incomes "
     "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
     keep: (assetId) => assetId != null && savingAssetIds.contains(assetId),
+    ids: pensionIds,
   );
   final pensionContribByMonth = <(int, int), double>{};
   for (final (dt, amount) in pensionRows) {
@@ -869,7 +880,10 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
           month: m,
           income: mIncome,
           navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
+          from: mStartRef,
+          to: mEnd,
           pensionContrib: mPensionContrib,
+          refunds: refundByMonth[(y, m)] ?? 0,
           hasIncomeData: monthsWithIncomeData.contains((y, m)),
         ),
       );
@@ -881,6 +895,8 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         days: days,
         income: yearIncome,
         navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
+        from: yStartRef,
+        to: effectiveEnd,
         pensionContrib: yearPensionContrib,
         refunds: refundByYear[y] ?? 0,
         months: months,
@@ -912,6 +928,9 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     firstDate: allSeriesData.firstDate,
     pensionContribCumulativeSpots: pensionContribSpots,
     rowsWithoutRate: rowsWithoutRate,
+    savingSeries: smartTotalSeries(_DashboardScreenState._seriesForRole('saving', userCharts, allSeriesData, activeAssets)),
+    incomeRecords: incomeRecords,
+    pensionRecords: [for (final (i, (dt, amount)) in pensionRows.indexed) (id: pensionIds[i], date: dt, amount: amount)],
   );
 });
 
@@ -935,6 +954,7 @@ final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref)
   final rates = _RateResolver(ref.watch(exchangeRateServiceProvider), baseCurrency);
   final now = ref.watch(currentDateProvider);
   final roles = await ref.watch(ledgerRolesProvider.future);
+  final adjustments = await ref.watch(adjustmentInputsProvider.future);
   // Same cutoff as the yearly Income/Expense/Savings figures.
   final wayback = ref.watch(waybackDateProvider) != null;
   return aggregateSpendingByCategory(
@@ -945,5 +965,8 @@ final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref)
     now: now,
     through: wayback ? now : null,
     excludedIds: roles.keys.toSet(),
+    // The ledger's "Saving for X" rows: what the spread saving plans set
+    // aside, which the yearly savings already went down by.
+    savingItems: resolveSavingItems(transactions: txs, adjustments: adjustments),
   );
 });

@@ -3,8 +3,8 @@
 //
 //  (a) that recalculation never changes the STATUS of the row just saved:
 //      in filtered mode a row the user set to Settled was flipped back to
-//      Cancelled at once (a hand-entered row has no statement data, so the
-//      filter excluded it). Every other row is recalculated as before.
+//      Cancelled at once (its filter value excludes it). Every other row
+//      is recalculated as before.
 //  (b) `balance_after` stays derived in an account whose saved config
 //      computes balances (cumulative / column / filtered); without such a
 //      config (none, the `{}` number-format placeholder, an explicit none, a
@@ -123,12 +123,12 @@ void main() {
       expect((await row(moved)).status, TransactionStatus.settled);
     });
 
-    test('the row still does not move a filtered balance its filter value excludes', () async {
+    test('a row the filter cannot judge (no statement data) moves a filtered balance; one it can still excludes', () async {
       await config(filtered);
       final done = await imported(1, 100, 'DONE');
       final id = await service.create(accountId: acct, operationDate: DateTime(2025, 1, 3), amount: -10, currency: 'EUR');
       expect((await row(done)).balanceAfter, 100);
-      expect((await row(id)).balanceAfter, 100);
+      expect((await row(id)).balanceAfter, 90, reason: 'a hand-entered row has no filter value to be excluded by');
     });
   });
 

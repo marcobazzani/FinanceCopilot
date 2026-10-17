@@ -1,11 +1,13 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:finance_copilot/utils/dialogs.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
@@ -18,11 +20,13 @@ import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 /// Create / edit an ExtraordinaryEvent. Handles all four quadrants of the
 /// direction × treatment matrix via two segmented controls at the top.
 ///
-/// For treatment=spread the schedule is defined by a frequency + step count.
-/// The window always ENDS on [eventDate] and starts `stepCount` steps earlier
-/// (frequency × steps, going backwards) — i.e. the amount is amortized over
-/// the N periods leading up to the event. Example: 12 monthly steps → the
-/// spread starts one year before the event date.
+/// For treatment=spread the schedule is a frequency, a step count and a start.
+/// By default the window covers the N periods leading up to [eventDate]: it
+/// starts `stepCount` steps earlier and its last step lands one period before
+/// the event (12 monthly steps → starts one year before the event), and it
+/// follows the event date. A start date picked — or stored by an event saved
+/// from one, e.g. a saving plan years before the purchase — pins the window:
+/// it then runs `stepCount` steps from that day, whatever the event date.
 class EventEditScreen extends ConsumerStatefulWidget {
   final ExtraordinaryEvent? event;
 
@@ -67,6 +71,17 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late bool _isEphemeral;
   bool _saving = false;
 
+  /// The day the spread starts when it does not follow the event date: the
+  /// one the user picked, or the stored start of a window that is not the N
+  /// periods before the event. Null while the window follows the event date.
+  DateTime? _pinnedStart;
+
+  /// What the event's buffer was reimbursed, left out of the amount spread
+  /// (see [ExtraordinaryEventService.scheduledStepAmount]): 0 for a new event,
+  /// which has no buffer yet. Null while it loads, when no per-step amount is
+  /// shown rather than one the entries will not carry.
+  double? _reimbursed;
+
   bool get _canBeEphemeral => _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
 
   bool get _isEditing => widget.event != null;
@@ -86,13 +101,31 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   /// never saved as some other count.
   int? get _stepCount => _readSteps(_stepsCtrl.text);
 
-  /// The spread window covers the [_stepCount] periods immediately BEFORE the
-  /// event: it starts `stepCount` steps back (frequency × steps) and the final
-  /// step lands one period before the event date. Example: 12 monthly steps →
-  /// starts one year before the event, 12 entries in total. Only read with a
-  /// valid step count.
-  DateTime get _spreadStart => schedule_math.stepBack(_eventDate, _stepCount!, _stepFrequency);
-  DateTime get _spreadEnd => schedule_math.stepBack(_eventDate, 1, _stepFrequency);
+  /// The spread window: [_stepCount] steps from [_pinnedStart] when there is
+  /// one, else the [_stepCount] periods immediately BEFORE the event — it
+  /// starts `stepCount` steps back (frequency × steps) and the final step
+  /// lands one period before the event date (12 monthly steps → starts one
+  /// year before the event, 12 entries in total). [_spreadStart] needs a valid
+  /// step count unless pinned, [_spreadEnd] always does.
+  DateTime get _spreadStart => _pinnedStart ?? schedule_math.stepBack(_eventDate, _stepCount!, _stepFrequency);
+  DateTime get _spreadEnd => _pinnedStart == null
+      ? schedule_math.stepBack(_eventDate, 1, _stepFrequency)
+      : schedule_math.computeEndDate(_pinnedStart!, _stepCount!, _stepFrequency);
+
+  /// The window saved: the stored one while the form still describes its
+  /// schedule (same frequency, same step dates), so an untouched window is
+  /// written back exactly as it was, whatever its end day; else the one shown.
+  (DateTime, DateTime) get _windowToSave {
+    final e = widget.event;
+    final storedStart = e?.spreadStart, storedEnd = e?.spreadEnd;
+    if (storedStart != null &&
+        storedEnd != null &&
+        e!.stepFrequency == _stepFrequency &&
+        listEquals(schedule_math.computeStepDates(storedStart, storedEnd, _stepFrequency), _previewDates)) {
+      return (storedStart, storedEnd);
+    }
+    return (_spreadStart, _spreadEnd);
+  }
 
   @override
   void initState() {
@@ -123,12 +156,29 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     _eventDate = e?.eventDate ?? dateOnly(widget.seedDate ?? DateTime.now());
     _isEphemeral = e?.isEphemeral ?? false;
 
-    // When editing a spread event, reconstruct the step count from the stored
-    // window so the UI shows the same number of steps (the window is otherwise
-    // recomputed from eventDate + frequency × steps on save).
+    // An existing spread opens on its stored window: its step count and, when
+    // the window is not the N periods before the event (saved from a start
+    // date, e.g. a saving plan years before the purchase), its start, which
+    // then stays put whatever the event date.
     if (e != null && e.treatment == EventTreatment.spread && e.spreadStart != null && e.spreadEnd != null && e.stepFrequency != null) {
-      final n = schedule_math.computeStepDates(e.spreadStart!, e.spreadEnd!, e.stepFrequency!).length;
-      if (n > 0) _stepsCtrl.text = n.toString();
+      final freq = e.stepFrequency!;
+      final stored = schedule_math.computeStepDates(e.spreadStart!, e.spreadEnd!, freq);
+      if (stored.isNotEmpty) {
+        _stepsCtrl.text = stored.length.toString();
+        final beforeEvent = schedule_math.computeStepDates(
+          schedule_math.stepBack(e.eventDate, stored.length, freq),
+          schedule_math.stepBack(e.eventDate, 1, freq),
+          freq,
+        );
+        if (!listEquals(stored, beforeEvent)) _pinnedStart = stored.first;
+      }
+    }
+    if (e == null) {
+      _reimbursed = 0;
+    } else {
+      ref.read(extraordinaryEventServiceProvider).totalReimbursed(e).then((total) {
+        if (mounted) setState(() => _reimbursed = total);
+      });
     }
   }
 
@@ -148,11 +198,13 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
 
   double? _parsedAmount(String loc) => fmt.tryParseLocalized(_amountCtrl.text, locale: loc);
 
+  /// The amount each scheduled entry will carry, as the service computes it.
   double? _perStep(String loc) {
     final amount = _parsedAmount(loc);
+    final reimbursed = _reimbursed;
     final dates = _previewDates;
-    if (amount == null || amount <= 0 || dates.isEmpty) return null;
-    return amount / dates.length;
+    if (amount == null || amount <= 0 || reimbursed == null || dates.isEmpty) return null;
+    return ExtraordinaryEventService.scheduledStepAmount(totalAmount: amount, reimbursed: reimbursed, steps: dates.length);
   }
 
   Future<void> _save() async {
@@ -164,6 +216,8 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     if (amount == null) return;
     final svc = ref.read(extraordinaryEventServiceProvider);
     final ephemeral = _canBeEphemeral && _isEphemeral;
+    final isSpread = _treatment == EventTreatment.spread;
+    final (spreadStart, spreadEnd) = isSpread ? _windowToSave : (null, null);
 
     setState(() => _saving = true);
     try {
@@ -177,9 +231,9 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
             totalAmount: Value(amount),
             currency: Value(currency),
             eventDate: Value(_eventDate),
-            stepFrequency: Value(_treatment == EventTreatment.spread ? _stepFrequency : null),
-            spreadStart: Value(_treatment == EventTreatment.spread ? _spreadStart : null),
-            spreadEnd: Value(_treatment == EventTreatment.spread ? _spreadEnd : null),
+            stepFrequency: Value(isSpread ? _stepFrequency : null),
+            spreadStart: Value(spreadStart),
+            spreadEnd: Value(spreadEnd),
             notes: Value(_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
             isEphemeral: Value(ephemeral),
           ),
@@ -192,9 +246,9 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
           totalAmount: amount,
           currency: currency,
           eventDate: _eventDate,
-          stepFrequency: _treatment == EventTreatment.spread ? _stepFrequency : null,
-          spreadStart: _treatment == EventTreatment.spread ? _spreadStart : null,
-          spreadEnd: _treatment == EventTreatment.spread ? _spreadEnd : null,
+          stepFrequency: isSpread ? _stepFrequency : null,
+          spreadStart: spreadStart,
+          spreadEnd: spreadEnd,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           isEphemeral: ephemeral,
         );
@@ -235,6 +289,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
 
     final previewDates = _previewDates;
     final perStep = _perStep(locale);
+    final reimbursed = _reimbursed;
 
     return Scaffold(
       appBar: AppBar(
@@ -368,8 +423,21 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                         return _readSteps(v) == null ? s.stepCountInvalid : null;
                       },
                     ),
+                    // The first step: N periods before the event until a day
+                    // is picked, which then pins the window there.
+                    if (_pinnedStart != null || _stepCount != null) ...[
+                      const SizedBox(height: 12),
+                      DateFormField(
+                        date: _spreadStart,
+                        onPicked: (picked) => setState(() => _pinnedStart = picked),
+                        label: s.spreadStartLabel,
+                        firstYear: 2000,
+                        outlined: false,
+                      ),
+                    ],
                     // Preview: the step count is shape, the per-step amount
-                    // is position size (N × it is the total).
+                    // is position size (N × it is the total spread), and so is
+                    // what was reimbursed.
                     if (previewDates.isNotEmpty && perStep != null) ...[
                       const SizedBox(height: 16),
                       PrivacySentence(
@@ -379,6 +447,16 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (reimbursed != null && reimbursed != 0) ...[
+                        const SizedBox(height: 4),
+                        PrivacySentence(
+                          s.spreadNetOfReimbursed(privacySlot(0)),
+                          figures: ['${amtFmt.format(reimbursed)} $sym'],
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       Text(
                         '${dateFmt.format(_spreadStart)} → ${dateFmt.format(_spreadEnd)}',

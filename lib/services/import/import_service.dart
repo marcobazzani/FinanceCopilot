@@ -239,6 +239,17 @@ class TransactionImportPreview {
   final bool openingBalanceUnknown;
   final int rowsToReplace;
 
+  /// How many rows the account holds before the import. Null when not
+  /// counted (a preview built elsewhere): the file is then not taken for the
+  /// account's whole history.
+  final int? existingRows;
+
+  /// The latest date touched by the file, on either timeline (booking or
+  /// value date, whichever of the two is later for a given row). Null when
+  /// no row parsed. Shown next to an "actual balance" input, so the user
+  /// knows which day's balance to type.
+  final DateTime? lastDay;
+
   const TransactionImportPreview({
     required this.parsedRows,
     required this.errorRows,
@@ -247,7 +258,16 @@ class TransactionImportPreview {
     this.predictedBalance,
     this.openingBalanceUnknown = false,
     required this.rowsToReplace,
+    this.existingRows,
+    this.lastDay,
   });
+
+  /// Whether the account holds nothing but the file's rows once it is
+  /// imported: it has no row yet, or the file reaches back far enough to
+  /// replace every one. Only then can a balance the user states be the
+  /// account's opening: with earlier rows kept, a difference from the bank is
+  /// a gap in them.
+  bool get replacesWholeHistory => existingRows != null && rowsToReplace == existingRows;
 }
 
 /// Generic file importer: applies user column mapping, hashes rows for dedup,
@@ -1126,6 +1146,7 @@ class ImportService {
     final issues = <ImportIssue>[];
     double importSum = 0;
     DateTime? oldestDate;
+    DateTime? lastDay;
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
@@ -1152,6 +1173,8 @@ class ImportService {
         }
 
         if (oldestDate == null || date.isBefore(oldestDate)) oldestDate = date;
+        final rowLastDay = valueDate != null && valueDate.isAfter(date) ? valueDate : date;
+        if (lastDay == null || rowLastDay.isAfter(lastDay)) lastDay = rowLastDay;
         parsed++;
       } catch (e) {
         errorCount++;
@@ -1159,7 +1182,12 @@ class ImportService {
       }
     }
 
-    // Count rows that would be deleted (replaced)
+    // Count rows that would be deleted (replaced), out of all the account holds.
+    final existingRows =
+        (await _db
+                .customSelect('SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ?', variables: [Variable.withInt(accountId)])
+                .getSingle())
+            .read<int>('cnt');
     var rowsToReplace = 0;
     double? predictedBalance;
     var openingBalanceUnknown = false;
@@ -1190,7 +1218,7 @@ class ImportService {
 
     _log.fine(
       'previewTransactionImport: parsed=$parsed, errors=$errorCount, sum=$importSum, '
-      'predicted=$predictedBalance, toReplace=$rowsToReplace',
+      'predicted=$predictedBalance, toReplace=$rowsToReplace of $existingRows',
     );
     return TransactionImportPreview(
       parsedRows: parsed,
@@ -1200,6 +1228,8 @@ class ImportService {
       predictedBalance: predictedBalance,
       openingBalanceUnknown: openingBalanceUnknown,
       rowsToReplace: rowsToReplace,
+      existingRows: existingRows,
+      lastDay: lastDay,
     );
   }
 
@@ -1540,10 +1570,9 @@ class ImportService {
   ) {
     if (rows.isEmpty || balanceMode == BalanceMode.none) return;
 
-    // The value-date timeline (the canonical "money moved" date, per
-    // AGENTS.md), file order breaking ties: the one the ledger's
-    // recalculation walks too, so both store the same balances for the same
-    // set of transactions.
+    // The value-date timeline (the canonical "money moved" date), file order
+    // breaking ties: the one the ledger's recalculation walks too, so both
+    // store the same balances for the same set of transactions.
     final timeline = [
       for (final r in rows)
         RunningBalanceRow(

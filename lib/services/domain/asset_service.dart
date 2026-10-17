@@ -160,8 +160,8 @@ class AssetService {
     });
   }
 
-  // first/last date use value_date per AGENTS.md (canonical "money moved"
-  // date for display). operation_date is only for import dedup.
+  // first/last date use value_date (the date the money moved, the one
+  // displayed). operation_date is only for import dedup.
   //
   // total_invested is computed by walking each asset's events in
   // chronological order and maintaining a running weighted-average cost

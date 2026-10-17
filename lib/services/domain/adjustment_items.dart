@@ -9,6 +9,9 @@ import 'package:finance_copilot/database/tables.dart';
 class SavingScheduleItem {
   final DateTime date;
   final double amount; // signed (negative for outflow saving)
+
+  /// The spread event this row comes from, and its name.
+  final int eventId;
   final String eventName;
 
   /// The currency of the spread event this row comes from: [amount] is in it.
@@ -16,6 +19,7 @@ class SavingScheduleItem {
   const SavingScheduleItem({
     required this.date,
     required this.amount,
+    required this.eventId,
     required this.eventName,
     required this.currency,
   });
@@ -145,7 +149,7 @@ AdjustmentResolution resolveAdjustments({
         consumed.add(t.id);
         annotated[t.id] = (e.isEphemeral && !isOutflow) ? financedLabel(e.name) : adjustedLabel(e.name);
       } else if (en.entryKind == EventEntryKind.scheduled) {
-        savings.add(SavingScheduleItem(date: en.date, amount: en.amount, eventName: e.name, currency: e.currency));
+        savings.add(SavingScheduleItem(date: en.date, amount: en.amount, eventId: e.id, eventName: e.name, currency: e.currency));
       }
     }
   }

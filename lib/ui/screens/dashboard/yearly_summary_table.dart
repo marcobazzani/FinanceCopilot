@@ -66,13 +66,40 @@ class _YearlySummaryTable extends ConsumerWidget {
           ),
         ],
         rows: [
-          for (int i = 0; i < years.length; i++) _yearRow(years[i], i == 0 && years[i].year == now.year, amtFmt, pctFmt, sym, theme),
+          for (int i = 0; i < years.length; i++)
+            _yearRow(
+              years[i],
+              i == 0 && years[i].year == now.year,
+              amtFmt,
+              pctFmt,
+              sym,
+              theme,
+              (field, value) => _showCashFlowExplanation(
+                context,
+                ref,
+                data: data,
+                field: field,
+                year: years[i].year,
+                from: years[i].from,
+                to: years[i].to,
+                cellValue: value,
+                locale: locale,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  DataRow _yearRow(_YearBucket y, bool isCurrent, NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
+  DataRow _yearRow(
+    _YearBucket y,
+    bool isCurrent,
+    NumberFormat amtFmt,
+    NumberFormat pctFmt,
+    String sym,
+    ThemeData theme,
+    void Function(CashFlowField field, double value) explain,
+  ) {
     TextStyle? style = isCurrent ? TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)) : null;
 
     Color savingsColor = y.savings >= 0 ? Colors.green.shade700 : Colors.red.shade700;
@@ -80,13 +107,14 @@ class _YearlySummaryTable extends ConsumerWidget {
     return DataRow(
       cells: [
         DataCell(Text(isCurrent ? '${y.year}*' : '${y.year}', style: style?.copyWith(fontWeight: FontWeight.w600))),
-        DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style)),
-        DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style)),
+        DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style), onTap: () => explain(CashFlowField.income, y.income)),
+        DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style), onTap: () => explain(CashFlowField.expenses, y.expenses)),
         DataCell(
           PrivacyText(
             '${y.savings >= 0 ? '+' : ''}${amtFmt.format(y.savings)} $sym',
             style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
           ),
+          onTap: () => explain(CashFlowField.savings, y.savings),
         ),
         // A year without income has no savings rate (the Sankey leaves it
         // out, the Health tab reads N/A): a dash, not a 0% rate.
