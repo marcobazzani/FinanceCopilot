@@ -1,6 +1,15 @@
 part of '../main.dart';
 
 extension _AppShellDriveDbOps on _AppShellState {
+  /// The import/export icon: with the sync indicator lit, straight to the
+  /// Restore (backup newer) or Backup (backup older) confirmation, which can
+  /// still lead to this dialog; otherwise the Import/Export dialog.
+  Future<void> _openSyncIndicator(BuildContext context) => switch (ref.read(backupSyncStatusProvider).indicator) {
+    BackupSyncIndicator.backupNewer => _restoreFromDrive(context, fromIndicator: true),
+    BackupSyncIndicator.backupOlder => _backupToDrive(context, fromIndicator: true),
+    BackupSyncIndicator.off => _showImportExportDialog(context),
+  };
+
   Future<void> _showImportExportDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
     final sync = ref.read(googleDriveSyncProvider);
@@ -129,56 +138,92 @@ extension _AppShellDriveDbOps on _AppShellState {
     }
   }
 
-  Future<void> _backupToDrive(BuildContext context) async {
+  /// A Backup or Restore confirmation: [body], plus [warning] when there is
+  /// one. Opened from the sync indicator ([fromIndicator]) it also offers the
+  /// Import/Export dialog, out of reach otherwise while the indicator is lit.
+  /// Says whether to go ahead.
+  Future<bool> _confirmDriveTransfer(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String? warning,
+    required String confirmLabel,
+    required bool fromIndicator,
+    Color? confirmColor,
+  }) async {
+    final s = ref.read(appStringsProvider);
+    final choice = await showConfirmChoiceDialog(
+      context,
+      title: title,
+      content: warning == null ? body : '$body\n\n$warning',
+      confirmLabel: confirmLabel,
+      cancelLabel: s.cancel,
+      confirmColor: confirmColor,
+      alternativeLabel: fromIndicator ? s.syncMoreOptions : null,
+    );
+    if (choice == ConfirmChoice.alternative && context.mounted) await _showImportExportDialog(context);
+    return choice == ConfirmChoice.confirm;
+  }
+
+  Future<void> _backupToDrive(BuildContext context, {bool fromIndicator = false}) async {
     final s = ref.read(appStringsProvider);
     final sync = ref.read(googleDriveSyncProvider);
+    final backupSync = ref.read(backupSyncControllerProvider);
 
     // Pre-flight: show the user what will be overwritten on Drive.
     final lookup = await _lookUpDriveBackup(context, sync, s.importExportBackupFailed);
     if (lookup == null || !context.mounted) return;
     final existing = lookup.backup;
     final remoteInfo = existing != null ? _formatRemoteInfo(s, existing) : null;
+    await backupSync.sawBackup(existing);
+    if (!context.mounted) return;
 
-    final confirmed = await showConfirmDialog(
+    final confirmed = await _confirmDriveTransfer(
       context,
       title: s.importExportBackupConfirmTitle,
-      content: s.importExportBackupConfirmBody(remoteInfo),
+      body: s.importExportBackupConfirmBody(remoteInfo),
+      warning: ref.read(backupSyncStatusProvider).backupOverwritesRemoteEdits ? s.syncBackupOverwritesRemoteEdits : null,
       confirmLabel: s.importExportBackupDrive,
-      cancelLabel: s.cancel,
+      fromIndicator: fromIndicator,
     );
     if (!confirmed || !context.mounted) return;
 
     try {
-      await sync.backupToDrive();
+      final uploaded = await sync.backupToDrive();
       if (!context.mounted) return;
       showInfoSnack(context, s.importExportBackupSuccess);
+      unawaited(backupSync.backedUp(uploaded));
     } catch (e, st) {
       _log.warning('backupToDrive failed', e, st);
       if (context.mounted) _showTransferFailure(context, e, s.importExportBackupFailed);
     }
   }
 
-  Future<void> _restoreFromDrive(BuildContext context) async {
+  Future<void> _restoreFromDrive(BuildContext context, {bool fromIndicator = false}) async {
     final s = ref.read(appStringsProvider);
     final sync = ref.read(googleDriveSyncProvider);
+    final backupSync = ref.read(backupSyncControllerProvider);
 
     // Pre-flight: show the user what will be pulled from Drive.
     final lookup = await _lookUpDriveBackup(context, sync, s.importExportRestoreFailed);
     if (lookup == null || !context.mounted) return;
     final existing = lookup.backup;
+    await backupSync.sawBackup(existing);
+    if (!context.mounted) return;
     if (existing == null) {
       showInfoSnack(context, s.importExportRestoreEmpty);
       return;
     }
     final remoteInfo = _formatRemoteInfo(s, existing);
 
-    final confirmed = await showConfirmDialog(
+    final confirmed = await _confirmDriveTransfer(
       context,
       title: s.importExportRestoreConfirmTitle,
-      content: s.importExportRestoreConfirmBody(remoteInfo),
+      body: s.importExportRestoreConfirmBody(remoteInfo),
+      warning: ref.read(backupSyncStatusProvider).restoreDiscardsLocalEdits ? s.syncRestoreDiscardsLocalEdits : null,
       confirmLabel: s.importExportRestoreDrive,
-      cancelLabel: s.cancel,
       confirmColor: Colors.red,
+      fromIndicator: fromIndicator,
     );
     if (!confirmed || !context.mounted) return;
 
@@ -190,6 +235,9 @@ extension _AppShellDriveDbOps on _AppShellState {
         showInfoSnack(context, s.importExportRestoreEmpty);
         return;
       }
+      // Recorded on the restored data, before the database reloads.
+      await backupSync.restored(restored);
+      if (!context.mounted) return;
       ref.read(dbReloadTrigger.notifier).state++;
       showInfoSnack(context, s.importExportRestoreSuccess);
     } catch (e, st) {
@@ -300,6 +348,8 @@ extension _AppShellDriveDbOps on _AppShellState {
       return;
     }
     ref.read(dbReloadTrigger.notifier).state++;
+    // The new database never synced: no backup is newer or older than it.
+    ref.read(backupSyncControllerProvider).forgetSync();
     if (mounted) {
       // ignore: invalid_use_of_protected_member
       setState(() => _showLanding = true);

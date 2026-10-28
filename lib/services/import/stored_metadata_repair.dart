@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/services/import/stored_import_data.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 import 'package:finance_copilot/utils/logger.dart';
@@ -89,8 +90,9 @@ class StoredMetadataRepair {
     return RepairReport(reports, dryRun: dryRun);
   }
 
-  /// Run once per database, gated by [kRawMetadataLocaleVersionKey].
-  Future<RepairReport?> runIfNeeded({required String appLocale}) async {
+  /// Run once per database, gated by [kRawMetadataLocaleVersionKey]. Startup
+  /// maintenance, not an edit: its writes are automatic.
+  Future<RepairReport?> runIfNeeded({required String appLocale}) => automaticWrites(() async {
     final row = await (_db.select(_db.appConfigs)..where((c) => c.key.equals(kRawMetadataLocaleVersionKey))).getSingleOrNull();
     if ((int.tryParse(row?.value ?? '') ?? 0) >= kRawMetadataLocaleVersion) return null;
     final report = await run(appLocale: appLocale);
@@ -105,7 +107,7 @@ class StoredMetadataRepair {
         );
     _log.info('stored-number normalization v$kRawMetadataLocaleVersion: rewritten=${report.rewritten} unresolved=${report.unresolved}');
     return report;
-  }
+  });
 
   Future<AccountRepairReport?> _repairAccount(ImportConfig cfg, String? accountName, {required String appLocale, required bool dryRun}) async {
     final accountId = cfg.accountId!;

@@ -15,6 +15,7 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
+import 'database/manual_edit_tracker.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_actions_controller.dart';
@@ -22,6 +23,8 @@ import 'services/app_settings.dart';
 import 'services/import/import_service.dart';
 import 'services/import/stored_import_data.dart';
 import 'services/import/stored_metadata_repair.dart';
+import 'services/sync/backup_check_scheduler.dart';
+import 'services/sync/backup_sync_status.dart';
 import 'services/sync/db_transfer_service.dart';
 import 'services/market/exchange_rate_service.dart';
 import 'services/sync/google_drive_sync_service.dart';
@@ -164,6 +167,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   final _repaintKey = GlobalKey();
   StreamSubscription? _shareIntentSub;
 
+  /// The automatic backup checks; started once a Drive session exists.
+  BackupCheckScheduler? _backupChecks;
+
   bool get _isSyncing => ref.read(isManualSyncingProvider);
   set _isSyncing(bool v) => ref.read(isManualSyncingProvider.notifier).state = v;
 
@@ -190,6 +196,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       ref.read(globalActionsRegistryProvider.notifier).state = GlobalActionsRegistry(
         manualRefresh: _manualRefresh,
         showImportExportDialog: _showImportExportDialog,
+        openSyncIndicator: _openSyncIndicator,
         showSettingsDialog: _showSettingsDialog,
         openImportFiles: (ctx) async {
           await Navigator.push(
@@ -205,7 +212,10 @@ class _AppShellState extends ConsumerState<AppShell> {
           final nowOnline = await monitor.check();
           if (!mounted) return;
           ref.read(networkOnlineProvider.notifier).state = nowOnline;
-          if (nowOnline && widget.enableStartupSync) _startBackgroundSync();
+          if (nowOnline && widget.enableStartupSync) {
+            _startBackgroundSync();
+            _backupChecks?.runNow();
+          }
         },
       );
     });
@@ -239,6 +249,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final signedIn = await sync.trySilentSignIn();
     if (signedIn) {
       _log.info('Drive sync: signed in as ${sync.userEmail}');
+      _startBackupChecks();
     } else if (sync.needsReauth && mounted) {
       _log.info('Drive sync: needs re-auth (use Settings to sign in)');
       final s = ref.read(appStringsProvider);
@@ -261,13 +272,38 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// snack bar. Says whether it signed in.
   Future<bool> _signInToDrive(GoogleDriveSyncService sync) async {
     final ok = await sync.signIn();
+    if (ok) _onDriveSignedIn(sync);
     if (!ok && mounted) showInfoSnack(context, ref.read(appStringsProvider).driveSignInFailed);
     return ok;
+  }
+
+  /// A Drive session began (from Settings, the landing page or the re-auth
+  /// snack bar): wire it for Backup/Restore and start checking the backup.
+  void _onDriveSignedIn(GoogleDriveSyncService sync) {
+    _wireSyncCallbacks(sync);
+    _startBackupChecks();
+  }
+
+  /// Starts the automatic backup checks, or checks again when they already
+  /// run (a new sign-in). Off with [AppShell.enableStartupSync], like the
+  /// other automatic network work.
+  void _startBackupChecks() {
+    if (!widget.enableStartupSync || !mounted) return;
+    final running = _backupChecks;
+    if (running != null) {
+      running.runNow();
+    } else {
+      _backupChecks = BackupCheckScheduler(
+        check: () => ref.read(backupSyncControllerProvider).checkDrive(),
+        online: () => ref.read(networkOnlineProvider),
+      )..start();
+    }
   }
 
   @override
   void dispose() {
     _shareIntentSub?.cancel();
+    _backupChecks?.dispose();
     super.dispose();
   }
 
@@ -306,22 +342,25 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   /// One-time recalculation of balances in value_date order after migration 25,
   /// from each account's saved import config. Column-mode balances follow the
-  /// bank's own figures and are left alone.
+  /// bank's own figures and are left alone. Maintenance, not an edit: its
+  /// writes are automatic.
   Future<void> _runPendingBalanceRecalc() async {
     try {
-      final db = ref.read(databaseProvider);
-      final flag = await db
-          .customSelect(
-            "SELECT value FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
-          )
-          .getSingleOrNull();
-      if (flag == null) return;
+      await automaticWrites(() async {
+        final db = ref.read(databaseProvider);
+        final flag = await db
+            .customSelect(
+              "SELECT value FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
+            )
+            .getSingleOrNull();
+        if (flag == null) return;
 
-      await ref.read(transactionServiceProvider).recalcAllFromImportConfigs(skip: const {BalanceMode.column});
+        await ref.read(transactionServiceProvider).recalcAllFromImportConfigs(skip: const {BalanceMode.column});
 
-      await db.customStatement(
-        "DELETE FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
-      );
+        await db.customStatement(
+          "DELETE FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
+        );
+      });
     } catch (e) {
       _log.warning('Pending balance recalc failed: $e');
     }
@@ -354,16 +393,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   /// Wire up sync service callbacks needed for the explicit
-  /// Backup/Restore-from-Drive operations.
+  /// Backup/Restore-from-Drive operations. A restore is no edit: the data and
+  /// its manual-edit stamp come from the backup, so its writes are automatic.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
-    sync.copyFromAttached = (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
+    sync.copyFromAttached = (tmpPath) => automaticWrites(() => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath));
     sync.createSnapshot = () => ref.read(databaseProvider).snapshotToTempFile();
-    sync.onDbReplaced = () {
-      if (mounted) {
-        _log.info('DB replaced by sync, reloading...');
-        ref.read(dbReloadTrigger.notifier).state++;
-      }
-    };
   }
 
   Future<void> _startBackgroundSync() async {
@@ -391,13 +425,16 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
   }
 
-  /// Full manual refresh: pull from Google Drive, then refresh market data.
-  /// Drives [isManualSyncingProvider] so the global Refresh action's spinner
-  /// reflects pulls triggered both from the AppBar button and the
-  /// pull-to-refresh gesture on mobile. Each step is best-effort -- failures
-  /// don't block subsequent steps.
+  /// Full manual refresh: market data, and a fresh look at the Drive backup
+  /// for the sync indicator. Drives [isManualSyncingProvider] so the global
+  /// Refresh action's spinner reflects refreshes triggered both from the
+  /// AppBar button and the pull-to-refresh gesture on mobile. Each step is
+  /// best-effort -- failures don't block subsequent steps.
   Future<void> _manualRefresh() async {
-    if (_isSyncing) return;
+    // Needs no market data: checked on every refresh, even one arriving while
+    // a background sync holds the spinner.
+    final backupCheck = ref.read(backupSyncControllerProvider).checkDrive();
+    if (_isSyncing) return backupCheck;
     _isSyncing = true;
     try {
       // Re-evaluate "today" so a refresh triggered after a day boundary clears
@@ -424,7 +461,8 @@ class _AppShellState extends ConsumerState<AppShell> {
       // cases where revalues were inserted via a path that bypasses
       // AssetEventService.create's post-CRUD resync (e.g. CSV import's
       // batched insert), and re-anchors close_price after any
-      // intervening buy/sell that shifted the qty-at-revalue.
+      // intervening buy/sell that shifted the qty-at-revalue. Derived
+      // data, so the writes are automatic.
       try {
         final db = ref.read(databaseProvider);
         final eventService = ref.read(assetEventServiceProvider);
@@ -434,9 +472,11 @@ class _AppShellState extends ConsumerState<AppShell> {
               readsFrom: {db.assetEvents},
             )
             .get();
-        for (final row in rows) {
-          await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
-        }
+        await automaticWrites(() async {
+          for (final row in rows) {
+            await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
+          }
+        });
         if (rows.isNotEmpty) {
           _log.info('Manual refresh: resynced market_prices for ${rows.length} asset(s) with revalues');
         }
@@ -449,6 +489,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       } catch (e) {
         _log.warning('Manual refresh: composition sync failed: $e');
       }
+      await backupCheck;
     } catch (e) {
       _log.warning('Manual refresh error: $e');
     } finally {
@@ -558,7 +599,8 @@ class _AppShellState extends ConsumerState<AppShell> {
                           try {
                             final restored = await sync.restoreFromDrive();
                             if (restored != null && mounted) {
-                              ref.read(dbReloadTrigger.notifier).state++;
+                              await ref.read(backupSyncControllerProvider).restored(restored);
+                              if (mounted) ref.read(dbReloadTrigger.notifier).state++;
                             }
                           } catch (e, st) {
                             // Nothing was restored: the landing page stays, so

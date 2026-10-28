@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/classification/description_normalizer.dart';
 import 'package:finance_copilot/services/classification/ledger_roles.dart';
@@ -470,12 +471,15 @@ class TransactionClassifierService {
 
   /// Recompute `merchant_key` / `counterparty` / `entry_kind` when the
   /// normalizer version changed or when rows lack a key. Returns the number
-  /// of rows rewritten. Safe to call on every startup.
+  /// of rows rewritten. Safe to call on every startup; maintenance, not an
+  /// edit, so its writes are automatic.
   ///
   /// Merchant-key rules are the user's work and must survive a normalizer
   /// change: every rule whose pattern equals an OLD key is re-pointed at the
   /// NEW key(s) those same rows now carry (one rule per distinct new key).
-  Future<int> recomputeKeysIfStale({bool force = false}) async {
+  Future<int> recomputeKeysIfStale({bool force = false}) => automaticWrites(() => _recomputeKeysIfStale(force: force));
+
+  Future<int> _recomputeKeysIfStale({required bool force}) async {
     final row = await (_db.select(_db.appConfigs)..where((c) => c.key.equals(kNormalizerVersionKey))).getSingleOrNull();
     final stored = int.tryParse(row?.value ?? '');
     final versionChanged = stored != normalizerVersion;

@@ -52,9 +52,14 @@ final athFiredThisSessionProvider = StateProvider<Set<String>>((_) => <String>{}
 /// fires on demand.
 final historyTabSeenThisSessionProvider = StateProvider<bool>((_) => false);
 
-/// Whether the user-triggered price/rate/composition sync is currently
-/// running. Drives the spinner on the global Refresh icon from any screen.
+/// Whether the user-triggered refresh (prices, rates, compositions and the
+/// backup check) is currently running. Drives the spinner on the global
+/// Refresh icon from any screen.
 final isManualSyncingProvider = StateProvider<bool>((ref) => false);
+
+/// What the sync indicator on the import/export icon shows. Kept up to date
+/// by [backupSyncControllerProvider]; off until it has compared.
+final backupSyncStatusProvider = StateProvider<BackupSyncStatus>((ref) => BackupSyncStatus.off);
 
 /// Portable language setting (from ~/.config/FinanceCopilot/settings.json).
 /// Used before a DB is opened. Initialized on app start.

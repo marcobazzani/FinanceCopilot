@@ -20,23 +20,51 @@ Future<bool> showConfirmDialog(
   required String cancelLabel,
   Color? confirmColor,
   List<String> maskedFigures = const [],
+}) async =>
+    await showConfirmChoiceDialog(
+      context,
+      title: title,
+      content: content,
+      confirmLabel: confirmLabel,
+      cancelLabel: cancelLabel,
+      confirmColor: confirmColor,
+      maskedFigures: maskedFigures,
+    ) ==
+    ConfirmChoice.confirm;
+
+/// The answer to [showConfirmChoiceDialog].
+enum ConfirmChoice { cancel, confirm, alternative }
+
+/// [showConfirmDialog] with an optional third way out: [alternativeLabel]
+/// adds a button, between Cancel and the confirm button, that answers
+/// [ConfirmChoice.alternative]. Dismissing the dialog cancels.
+Future<ConfirmChoice> showConfirmChoiceDialog(
+  BuildContext context, {
+  required String title,
+  required String content,
+  required String confirmLabel,
+  required String cancelLabel,
+  Color? confirmColor,
+  String? alternativeLabel,
+  List<String> maskedFigures = const [],
 }) async {
-  final result = await showDialog<bool>(
+  final result = await showDialog<ConfirmChoice>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
       content: _message(content, maskedFigures),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancelLabel)),
+        TextButton(onPressed: () => Navigator.pop(ctx, ConfirmChoice.cancel), child: Text(cancelLabel)),
+        if (alternativeLabel != null) TextButton(onPressed: () => Navigator.pop(ctx, ConfirmChoice.alternative), child: Text(alternativeLabel)),
         FilledButton(
           style: confirmColor == null ? null : FilledButton.styleFrom(backgroundColor: confirmColor),
-          onPressed: () => Navigator.pop(ctx, true),
+          onPressed: () => Navigator.pop(ctx, ConfirmChoice.confirm),
           child: Text(confirmLabel),
         ),
       ],
     ),
   );
-  return result == true;
+  return result ?? ConfirmChoice.cancel;
 }
 
 /// [maskedFigures]: as for [showConfirmDialog]. [duration] and [action] go to

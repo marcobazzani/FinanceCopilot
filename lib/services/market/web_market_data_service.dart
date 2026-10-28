@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/services/market/web_page_parser.dart';
@@ -904,9 +905,10 @@ class WebMarketDataService extends MarketPriceService {
   }
 
   /// Caches [value] under [key] (replacing an older one) with a note of what
-  /// it is.
-  Future<void> _writeConfig(String key, String value, String description) =>
-      db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: key, value: value, description: Value(description)));
+  /// it is. A provider cache, never an edit, whoever triggers the lookup.
+  Future<void> _writeConfig(String key, String value, String description) => automaticWrites(
+    () => db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: key, value: value, description: Value(description))),
+  );
 
   Future<void> _cacheResolvedListing(String isin, ProviderSearchResult listing) async {
     final exchange = exchangeSynonyms[listing.exchange] ?? listing.exchange;
@@ -1501,8 +1503,12 @@ class WebMarketDataService extends MarketPriceService {
   /// around the buy date still captures the prior trading day.
   static DateTime initialSyncDefaultFrom(DateTime? firstBuy) => firstBuy?.subtract(_initialSyncBuffer) ?? DateTime(2020, 1, 1);
 
+  /// Provider data, not an edit: the writes (prices, provider caches, the
+  /// names of assets still showing their raw identifier) are automatic.
   @override
-  Future<void> syncPrices({bool forceToday = false}) async {
+  Future<void> syncPrices({bool forceToday = false}) => automaticWrites(() => _syncAllPrices(forceToday: forceToday));
+
+  Future<void> _syncAllPrices({required bool forceToday}) async {
     try {
       final assets =
           await (db.select(db.assets)

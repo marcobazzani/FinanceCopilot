@@ -11,6 +11,7 @@ import '../services/import/stored_import_data.dart';
 import '../utils/logger.dart';
 import 'category_seeds.dart';
 import 'db_file_name.dart';
+import 'manual_edit_tracker.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -67,13 +68,37 @@ class SchemaVersionMismatchException implements Exception {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : this._tracked(ManualEditTracker());
+
+  AppDatabase._tracked(ManualEditTracker tracker) : manualEdits = tracker, super(_openConnection().interceptWith(tracker));
 
   /// Open a database at a specific file path.
-  AppDatabase.withPath(String path) : super(_openAtPath(path));
+  AppDatabase.withPath(String path) : manualEdits = null, super(_openAtPath(path));
 
-  /// For testing: inject a custom executor.
-  AppDatabase.forTesting(super.e);
+  /// For testing: inject a custom executor, optionally with [manualEdits]
+  /// tracking like the app's own database.
+  AppDatabase.forTesting(QueryExecutor e, {this.manualEdits}) : super(manualEdits == null ? e : e.interceptWith(manualEdits));
+
+  /// Records manual edits on this database (see [ManualEditTracker]); null
+  /// when it is not tracked.
+  final ManualEditTracker? manualEdits;
+
+  /// When the data was last edited by hand (see [ManualEditTracker]), or null
+  /// when it never was since tracking began.
+  Future<String?> lastManualEdit() async =>
+      (await (select(appConfigs)..where((c) => c.key.equals(kLastManualEditKey))).getSingleOrNull())?.value;
+
+  /// The manual-edit stamp and drift schema version of the database file at
+  /// [path] (a backup snapshot), read straight from the file.
+  static ({String? lastManualEdit, int schemaVersion}) readSnapshotFacts(String path) {
+    final raw = sqlite3.open(path, mode: OpenMode.readOnly);
+    try {
+      final rows = raw.select('SELECT value FROM app_configs WHERE key = ?', [kLastManualEditKey]);
+      return (lastManualEdit: rows.isEmpty ? null : rows.first['value'] as String?, schemaVersion: raw.userVersion);
+    } finally {
+      raw.close();
+    }
+  }
 
   /// Returns the DB file reference without opening or creating it.
   static Future<File> dbFile() async {

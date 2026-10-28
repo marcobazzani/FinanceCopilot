@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/utils/logger.dart';
@@ -290,7 +291,9 @@ class PortfolioModelService {
     return out;
   }
 
-  Future<int> seedBuiltInModels() async {
+  /// Rewrites the built-in models from the app's catalog (on every launch).
+  /// App-provided data, not an edit: its writes are automatic.
+  Future<int> seedBuiltInModels() => automaticWrites(() async {
     final models = await loadBuiltInModels();
     await _db.transaction(() async {
       for (var index = 0; index < models.length; index++) {
@@ -316,7 +319,7 @@ class PortfolioModelService {
     });
     _log.info('seedBuiltInModels: seeded ${models.length} models');
     return models.length;
-  }
+  });
 
   Future<String> createCustomModel({
     required String name,
