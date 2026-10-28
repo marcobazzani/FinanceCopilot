@@ -9,6 +9,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' show parse;
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
@@ -78,8 +79,12 @@ class CompositionService {
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
       'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-  /// Sync composition data for all active assets.
-  Future<void> syncCompositions() async {
+  /// Sync composition data for all active assets. Provider data, not an
+  /// edit: its writes (compositions, a missing TER, the classification they
+  /// imply) are automatic; editing a composition by hand is not.
+  Future<void> syncCompositions() => automaticWrites(_syncCompositions);
+
+  Future<void> _syncCompositions() async {
     final assets = await (_db.select(_db.assets)..where((a) => a.isActive.equals(true))).get();
 
     _log.info('syncCompositions: ${assets.length} active assets');
@@ -190,12 +195,13 @@ class CompositionService {
 
   /// Wipe an asset's composition rows and re-run sync for it. Backs the
   /// "Refresh from market" button on the Composition panel — it's the
-  /// only way to opt back into automatic fetching once rows exist.
-  Future<void> clearAndResync(int assetId) async {
+  /// only way to opt back into automatic fetching once rows exist. What it
+  /// writes is provider data, so it is no edit either.
+  Future<void> clearAndResync(int assetId) => automaticWrites(() async {
     _log.info('clearAndResync: assetId=$assetId');
     await (_db.delete(_db.assetCompositions)..where((c) => c.assetId.equals(assetId))).go();
     await syncCompositions();
-  }
+  });
 
   /// Route to the appropriate data source based on ISIN pattern and asset metadata.
   Future<List<_Entry>> _fetchForAsset(Asset asset) async {

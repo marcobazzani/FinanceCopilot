@@ -32,12 +32,40 @@ class DriveFileInfo {
   final int size;
   final String? deviceName;
 
+  /// Drive's checksum of the file's content.
+  final String? md5Checksum;
+
+  /// The app properties stamped on the file by the upload that made it (see
+  /// [GoogleDriveSyncService.backupToDrive]).
+  final Map<String, String> appProperties;
+
   const DriveFileInfo({
     required this.fileId,
     required this.modifiedTime,
     required this.size,
     this.deviceName,
+    this.md5Checksum,
+    this.appProperties = const {},
   });
+
+  factory DriveFileInfo._of(drive.File f, {required String fileId, required int fallbackSize, required DateTime fallbackTime}) => DriveFileInfo(
+    fileId: fileId,
+    modifiedTime: f.modifiedTime ?? fallbackTime,
+    size: int.tryParse(f.size ?? '') ?? fallbackSize,
+    deviceName: f.appProperties?['deviceName'],
+    md5Checksum: f.md5Checksum,
+    appProperties: {
+      for (final MapEntry(:key, :value) in (f.appProperties ?? const {}).entries) key: ?value,
+    },
+  );
+}
+
+/// What the backup sync check needs from Drive: the session, and the backup's
+/// metadata.
+abstract interface class RemoteBackupProbe {
+  bool get isSignedIn;
+  String? get userEmail;
+  Future<DriveFileInfo?> getRemoteInfo();
 }
 
 /// Manual Google Drive backup/restore for the app database.
@@ -46,7 +74,7 @@ class DriveFileInfo {
 ///   without an interactive prompt every time).
 /// - Backup and Restore are explicit user actions in Import/Export.
 /// - All-or-nothing: entire DB file, never partial.
-class GoogleDriveSyncService {
+class GoogleDriveSyncService implements RemoteBackupProbe {
   static final bool _isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   /// How long one backup transfer may take: the whole upload, and on a
@@ -75,8 +103,6 @@ class GoogleDriveSyncService {
   drive.DriveApi? _driveApi;
   String? _userEmail;
 
-  late final String _deviceId;
-
   /// The transport under a desktop session's auth client.
   final http.Client Function() _newHttpClient;
 
@@ -87,34 +113,37 @@ class GoogleDriveSyncService {
   final Duration _transferTimeout;
   final Duration _consentTimeout;
 
-  /// [httpClientFactory], [launchConsentUrl], [transferTimeout] and
-  /// [consentTimeout] are test seams (the desktop auth transport, the browser
-  /// launch and the two waits below); production uses the defaults.
+  /// Describes the snapshot about to be uploaded as extra app properties,
+  /// stamped on the backup with its content.
+  final Future<Map<String, String?>> Function(String snapshotPath)? _snapshotProperties;
+
+  /// [snapshotProperties] describes each uploaded snapshot (see
+  /// [backupToDrive]). [httpClientFactory], [launchConsentUrl],
+  /// [transferTimeout] and [consentTimeout] are test seams (the desktop auth
+  /// transport, the browser launch and the two waits below); production uses
+  /// the defaults.
   GoogleDriveSyncService({
+    Future<Map<String, String?>> Function(String snapshotPath)? snapshotProperties,
     @visibleForTesting http.Client Function()? httpClientFactory,
     @visibleForTesting Future<bool> Function(Uri url)? launchConsentUrl,
     @visibleForTesting Duration transferTimeout = _defaultTransferTimeout,
     @visibleForTesting Duration consentTimeout = _defaultConsentTimeout,
-  }) : _newHttpClient = httpClientFactory ?? http.Client.new,
+  }) : _snapshotProperties = snapshotProperties,
+       _newHttpClient = httpClientFactory ?? http.Client.new,
        _launchConsentUrl = launchConsentUrl ?? _openInBrowser,
        _transferTimeout = transferTimeout,
        _consentTimeout = consentTimeout {
-    _deviceId = _computeDeviceId();
     // Fail fast if DB_FILE_NAME dart-define is missing, so dev builds can't
     // silently read or overwrite the prod Drive backup.
     dbFileName;
   }
 
-  String _computeDeviceId() {
-    final host = Platform.localHostname;
-    final os = Platform.operatingSystem;
-    return '$os-$host';
-  }
-
   // ── Auth ──────────────────────────────────────────
 
+  @override
   bool get isSignedIn => _driveApi != null;
 
+  @override
   String? get userEmail => _userEmail;
 
   /// True when the user was previously signed in but the session could not be
@@ -364,6 +393,7 @@ class GoogleDriveSyncService {
   /// Check what's on Google Drive: the backup, or null when there is none (or
   /// no session to look with). Throws when the lookup fails (auth/network):
   /// an unanswered lookup is no "no backup".
+  @override
   Future<DriveFileInfo?> getRemoteInfo() {
     final api = _driveApi;
     if (api == null) return Future.value();
@@ -378,18 +408,18 @@ class GoogleDriveSyncService {
       final fileList = await api.files.list(
         spaces: 'appDataFolder',
         q: "name = '$dbFileName'",
-        $fields: 'files(id, name, modifiedTime, size, appProperties)',
+        $fields: 'files(id, name, modifiedTime, size, md5Checksum, appProperties)',
         orderBy: 'modifiedTime desc',
         pageSize: 1,
       );
       final files = fileList.files;
       if (files == null || files.isEmpty) return null;
       final f = files.first;
-      return DriveFileInfo(
+      return DriveFileInfo._of(
+        f,
         fileId: f.id ?? (throw StateError('Drive listed the backup without an id')),
-        modifiedTime: f.modifiedTime ?? DateTime(2000),
-        size: int.tryParse(f.size ?? '0') ?? 0,
-        deviceName: f.appProperties?['deviceName'],
+        fallbackSize: 0,
+        fallbackTime: DateTime(2000),
       );
     } catch (e) {
       _log.warning('getRemoteInfo failed: $e');
@@ -412,7 +442,9 @@ class GoogleDriveSyncService {
   /// the live DB file: streaming the live file directly could capture a
   /// torn copy mid-write (background price sync, an in-progress import,
   /// etc.) — the upload "succeeds" but silently replaces a good remote
-  /// backup with an inconsistent one.
+  /// backup with an inconsistent one. The snapshot's description (the
+  /// constructor's `snapshotProperties`) goes up in the same request as its
+  /// content, so the two always belong together.
   Future<DriveFileInfo> backupToDrive() async {
     // Read the session once: signOut() can clear it while this awaits, and
     // every call below must go to the account the backup started on.
@@ -430,46 +462,38 @@ class GoogleDriveSyncService {
       final metadata = drive.File()
         ..name = dbFileName
         ..appProperties = {
-          'deviceId': _deviceId,
+          // Cleared: a device id the old automatic sync left on the backup.
+          'deviceId': null,
           'deviceName': Platform.localHostname,
+          ...?await _snapshotProperties?.call(snapshotPath),
         };
 
       // Throws when the lookup fails: a backup that could not be seen must
       // not get a second one created next to it.
       final existing = await _remoteInfo(api);
       final media = drive.Media(file.openRead(), file.lengthSync());
+      const fields = 'id,modifiedTime,size,md5Checksum,appProperties';
       final drive.File uploaded;
       if (existing != null) {
-        uploaded = await api.files
-            .update(
-              metadata,
-              existing.fileId,
-              uploadMedia: media,
-              $fields: 'id,modifiedTime,size,appProperties',
-            )
-            .timeout(_transferTimeout);
+        uploaded = await api.files.update(metadata, existing.fileId, uploadMedia: media, $fields: fields).timeout(_transferTimeout);
         _log.info('backupToDrive: updated remote DB (${file.lengthSync()} bytes)');
       } else {
-        metadata.parents = ['appDataFolder'];
-        uploaded = await api.files
-            .create(
-              metadata,
-              uploadMedia: media,
-              $fields: 'id,modifiedTime,size,appProperties',
-            )
-            .timeout(_transferTimeout);
+        metadata
+          ..parents = ['appDataFolder']
+          // Nothing to delete on a new file.
+          ..appProperties!.removeWhere((_, value) => value == null);
+        uploaded = await api.files.create(metadata, uploadMedia: media, $fields: fields).timeout(_transferTimeout);
         _log.info('backupToDrive: created remote DB (${file.lengthSync()} bytes)');
       }
 
-      final info = DriveFileInfo(
+      final info = DriveFileInfo._of(
+        uploaded,
         fileId: uploaded.id ?? (throw StateError('Drive answered the upload without a file id')),
-        modifiedTime: uploaded.modifiedTime ?? DateTime.now().toUtc(),
-        size: int.tryParse(uploaded.size ?? '0') ?? file.lengthSync(),
-        deviceName: uploaded.appProperties?['deviceName'],
+        fallbackSize: file.lengthSync(),
+        fallbackTime: DateTime.now().toUtc(),
       );
       // Track the actual remote modifiedTime, never local clock.
       await AppSettings.set('lastSyncTime', info.modifiedTime.toIso8601String());
-      await AppSettings.set('syncDirty', 'false');
       return info;
     } finally {
       try {
@@ -491,8 +515,7 @@ class GoogleDriveSyncService {
     if (remote == null) return null;
     final localPath = await _localDbPath;
     await _download(api, localPath, remote.fileId);
-    // Override the lastSyncTime that _download set with local clock —
-    // store the actual remote modifiedTime so future comparisons are honest.
+    // The remote modifiedTime, not the local clock.
     await AppSettings.set('lastSyncTime', remote.modifiedTime.toIso8601String());
     return remote;
   }
@@ -515,10 +538,6 @@ class GoogleDriveSyncService {
   /// Must run the copy in a transaction. If anything throws, drift rolls back
   /// and the local data is untouched.
   Future<void> Function(String tmpPath)? copyFromAttached;
-
-  /// Called when the local DB was replaced by a remote download.
-  /// The app shell should reload the DB and refresh the UI.
-  void Function()? onDbReplaced;
 
   /// Download the remote DB and merge its contents into the currently open
   /// drift instance via `ATTACH DATABASE`. No file swap, no drift close.
@@ -598,9 +617,6 @@ class GoogleDriveSyncService {
         _log.warning('download: failed to delete tmp (harmless): $e');
       }
 
-      // Note: lastSyncTime is set by the caller (restoreFromDrive) to the
-      // actual remote modifiedTime. _download intentionally does NOT use
-      // DateTime.now() here — that was the bug that stranded the desktop.
       _log.info('download: merged remote DB ($tmpSize bytes) total ${DateTime.now().difference(t0).inMilliseconds}ms');
     } catch (e, stack) {
       _log.severe('download failed: $e\n$stack');
@@ -611,10 +627,5 @@ class GoogleDriveSyncService {
       }
       rethrow;
     }
-  }
-
-  Future<DateTime?> get lastSyncTime async {
-    final s = await AppSettings.get('lastSyncTime');
-    return s != null ? DateTime.tryParse(s) : null;
   }
 }

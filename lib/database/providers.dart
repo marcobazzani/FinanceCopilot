@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'database.dart';
+import 'package:finance_copilot/services/sync/backup_stamp.dart';
 import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
 
 /// Increment to force the database provider to close and reopen (e.g. after import).
@@ -15,7 +16,8 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// Google Drive sync service (singleton).
+/// Google Drive sync service (singleton). Every backup is stamped with a
+/// description of its snapshot, read back by the sync indicator.
 final googleDriveSyncProvider = Provider<GoogleDriveSyncService>((ref) {
-  return GoogleDriveSyncService();
+  return GoogleDriveSyncService(snapshotProperties: describeBackupSnapshot);
 });

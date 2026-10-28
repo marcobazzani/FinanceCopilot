@@ -12,7 +12,8 @@ extension _AppShellSettingsDialog on _AppShellState {
         // export picker, the confirmation and its messages are not stacked
         // under (or hidden behind) the settings dialog.
         onWipe: () => _wipeDb(context),
-        onSignedIn: _wireSyncCallbacks,
+        onSignedIn: _onDriveSignedIn,
+        onSignedOut: () => ref.read(backupSyncControllerProvider).signedOut(),
       ),
     );
     // Confirmed once the dialog is gone: a snack bar raised while it is open
@@ -27,13 +28,14 @@ extension _AppShellSettingsDialog on _AppShellState {
 /// loaded there is no form and no Save, so a default is never written over a
 /// stored value.
 class _SettingsDialog extends ConsumerStatefulWidget {
-  const _SettingsDialog({required this.onCacheCleared, required this.onWipe, required this.onSignedIn});
+  const _SettingsDialog({required this.onCacheCleared, required this.onWipe, required this.onSignedIn, required this.onSignedOut});
 
   final VoidCallback onCacheCleared;
 
   /// Called after the dialog has closed itself.
   final VoidCallback onWipe;
   final void Function(GoogleDriveSyncService sync) onSignedIn;
+  final VoidCallback onSignedOut;
 
   @override
   ConsumerState<_SettingsDialog> createState() => _SettingsDialogState();
@@ -305,6 +307,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                         TextButton(
                           onPressed: () async {
                             await sync.signOut();
+                            widget.onSignedOut();
                             if (mounted) setState(() {});
                           },
                           child: Text(s.settingsSyncSignOut),

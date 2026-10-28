@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import 'package:finance_copilot/build_flags.dart';
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
@@ -39,6 +40,9 @@ import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart'
 import 'package:finance_copilot/services/portfolio/allocation_computation_service.dart' show unvaluedAssetCount;
 import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import 'package:finance_copilot/services/domain/transaction_service.dart';
+import 'package:finance_copilot/services/sync/backup_sync_controller.dart';
+import 'package:finance_copilot/services/sync/backup_sync_status.dart';
+import 'package:finance_copilot/services/sync/sync_base_store.dart';
 import 'package:finance_copilot/utils/asset_value_math.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/utils/visualization_clock.dart';

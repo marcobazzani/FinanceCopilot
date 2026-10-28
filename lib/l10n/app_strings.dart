@@ -175,7 +175,7 @@ class AppStrings {
   String get waybackNextEndOfMonth => _it ? 'Fine mese corrente' : 'Next end of month';
   String get waybackNextEndOfYear => _it ? 'Fine anno corrente' : 'Next end of year';
   String get waybackCustom => _it ? 'Personalizzata...' : 'Custom...';
-  String get tooltipRefreshPrices => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
+  String get tooltipRefresh => _it ? 'Aggiorna' : 'Refresh';
   String get tooltipSettings => _it ? 'Impostazioni' : 'Settings';
   String get tooltipImportFile => _it ? 'Importa file' : 'Import File';
 
@@ -243,6 +243,20 @@ class AppStrings {
     return '$size, $date$dev';
   }
 
+  // ── Backup sync indicator ─────────────────────────────────
+  String get syncBackupNewer =>
+      _it ? 'Backup più recente su Google Drive: clicca per ripristinarlo' : 'Newer backup on Google Drive: click to restore it';
+  String get syncBackupOlder => _it
+      ? 'Modifiche non ancora salvate su Google Drive: clicca per fare il backup'
+      : 'Changes not backed up to Google Drive yet: click to back up';
+  String get syncMoreOptions => _it ? 'Altre opzioni…' : 'More options…';
+  String get syncBackupOverwritesRemoteEdits => _it
+      ? 'Il backup su Drive contiene modifiche fatte su un altro dispositivo che qui mancano: il backup le sovrascrive.'
+      : 'The Drive backup has changes made on another device that this one lacks: backing up overwrites them.';
+  String get syncRestoreDiscardsLocalEdits => _it
+      ? 'Questo dispositivo ha modifiche che il backup non contiene: il ripristino le elimina.'
+      : 'This device has changes the backup lacks: restoring discards them.';
+
   // ── Landing page ──────────────────────────────────────────
   String get landingTitle => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';
   String get landingSubtitle => _it ? 'Il tuo database è vuoto. Come vuoi iniziare?' : 'Your database is empty. How would you like to start?';
@@ -270,8 +284,6 @@ class AppStrings {
   String settingsSyncSignedIn(String email) => _it ? 'Sincronizzato con $email' : 'Synced with $email';
   String get syncReauthNeeded =>
       _it ? 'Accedi di nuovo a Google Drive per continuare la sincronizzazione' : 'Please sign in to Google Drive again to continue syncing';
-
-  // ── Sync Conflict ──────────────────────────────────
 
   // ── Dashboard ───────────────────────────────────────────
   String get dashTabHistory => _it ? 'Storico' : 'History';

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/manual_edit_tracker.dart';
 import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/utils/visualization_clock.dart';
@@ -103,7 +104,8 @@ abstract class MarketPriceService {
 
   /// Sync prices for all active assets that have a ticker.
   /// If [forceToday] is true, re-fetch today's price even if already synced.
-  Future<void> syncPrices({bool forceToday = false}) async {
+  /// Provider data, not an edit: the writes are automatic.
+  Future<void> syncPrices({bool forceToday = false}) => automaticWrites(() async {
     try {
       final assets =
           await (db.select(db.assets)
@@ -130,7 +132,7 @@ abstract class MarketPriceService {
     } catch (e, stack) {
       _log.warning('syncPrices: unexpected error', e, stack);
     }
-  }
+  });
 
   Future<void> _syncAsset(Asset asset, {bool forceToday = false}) async {
     final ticker = asset.ticker;
@@ -346,8 +348,9 @@ abstract class MarketPriceService {
 
   /// Clear all cached data (market prices, exchange rates, compositions).
   /// Revalue-derived prices are immediately re-materialised so manual assets
-  /// keep rendering correctly after a cache wipe.
-  Future<void> clearCache() async {
+  /// keep rendering correctly after a cache wipe. Clearing a cache is no edit:
+  /// the writes are automatic.
+  Future<void> clearCache() => automaticWrites(() async {
     await db.delete(db.marketPrices).go();
     await db.delete(db.exchangeRates).go();
     await db.delete(db.assetCompositions).go();
@@ -362,5 +365,5 @@ abstract class MarketPriceService {
     for (final row in assetIdRows) {
       await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
     }
-  }
+  });
 }

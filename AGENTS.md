@@ -235,6 +235,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
   - **Historical migration code is exempt**: SQL strings in `database.dart`'s `onUpgrade` migrations from earlier versions (e.g. v8/v9/v11) reference legacy provider names because they ran on past upgrades; rewriting them would not change persisted DB data and risks divergence from what shipped.
   - Outside those exemptions, the grep `Investing\.com\|InvestingCom\|InvestingPage\|InvestingComService\|investing_com\|investing_page` must return zero hits.
 - **Date convention**: `operationDate` = when the bank processed it (used for import wipe-and-replace dedup). `valueDate` = when the money actually moved (used for display, ordering, charts, balance computation). All UI and queries must use `valueDate` for display/ordering. `operationDate` is only for the import dedup cutoff. Asset events and Income MUST have a populated `valueDate`.
+- **Manual vs automatic writes**: any database write counts as a manual edit and lights the backup sync indicator. A job that writes without a person asking for that change (provider sync, startup maintenance, seeding, derived fills, restore) MUST run inside `automaticWrites(...)`, declared where the job is defined. `test/automatic_writes_guard_test.dart` runs these jobs and fails when one moves the stamp; add every new background writer to it.
 
 # Pre-Release Checklist
 
@@ -276,7 +277,10 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/ui/screens/classification/transaction_classify_card.dart` — `TransactionClassifyCard`: the single classification card (category, rule scope, Skip/Apply) used by the wizard and the Sankey drill-down; re-classifying a categorized row also moves the rule's matches sharing its old category (`recategorizeMatching`)
 - `lib/ui/screens/classification/categories_rules_screen.dart` — Settings → Categories & rules (CRUD, classify actions, dirty banner)
 - `lib/ui/widgets/category_ui.dart` — Single source for category label/icon/color, `CategoryChip`, `showCategoryPicker`, `CategoryField`
-- `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
+- `lib/services/sync/google_drive_sync_service.dart` — Manual Google Drive backup/restore; each backup is stamped (app properties) with its snapshot's last manual edit, schema version and checksum
+- `lib/database/manual_edit_tracker.dart` — Drift interceptor recording the last manual edit (`LAST_MANUAL_EDIT`): every write counts unless it runs inside `automaticWrites`, or only touches provider-data tables (market prices, exchange rates)
+- `lib/services/sync/backup_sync_status.dart` — Pure rules of the sync indicator (backup newer / older / same), from this device's last manual edit, the backup's stamp and this device's last backup or restore
+- `lib/services/sync/backup_sync_controller.dart` — Keeps the sync indicator (`backupSyncStatusProvider`) up to date; `backup_check_scheduler.dart` runs its Drive checks (start, resume, every 15 min), `sync_base_store.dart` keeps each device's last sync, `backup_stamp.dart` writes and reads the backup stamp
 - `lib/services/sync/db_transfer_service.dart` — Import/export DB file
 - `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)
 - `lib/ui/screens/dashboard/cashflow_tab.dart` — Canonical collapsible-card (ExpansionTile) reference

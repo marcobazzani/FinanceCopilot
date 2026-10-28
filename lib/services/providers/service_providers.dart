@@ -42,6 +42,21 @@ final compositionServiceProvider = Provider<CompositionService>((ref) {
   return service;
 });
 
+/// Compares this device's manual edits with the Drive backup and publishes
+/// the result to [backupSyncStatusProvider]. Survives database reloads: it
+/// follows each new database instead of being rebuilt with it.
+final backupSyncControllerProvider = Provider<BackupSyncController>((ref) {
+  final controller = BackupSyncController(
+    drive: ref.watch(googleDriveSyncProvider),
+    store: const SettingsSyncBaseStore(),
+    database: () => ref.read(databaseProvider),
+    publish: (status) => ref.read(backupSyncStatusProvider.notifier).state = status,
+  );
+  ref.listen(databaseProvider, (_, db) => controller.attach(db), fireImmediately: true);
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
 // Dashboard chart configuration is no longer DB-backed; see
 // `lib/services/editable_charts_notifier.dart` and
 // `lib/services/default_charts_loader.dart`.

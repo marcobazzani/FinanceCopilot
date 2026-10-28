@@ -130,8 +130,11 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
           // deleting it. Re-resolving is cheap: getRate is a local lookup in
           // the exchange_rates table, no network.
           if (waybackDate == null && ev.exchangeRate == null) {
-            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
-              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+            // Derived from the stored rates, not typed by anyone: automatic.
+            await automaticWrites(
+              () => (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+                AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+              ),
             );
           }
           return amount / rate;
@@ -499,8 +502,11 @@ final convertedEventAmountsProvider = FutureProvider.autoDispose.family<Map<int,
         // Fill only — never overwrite a stored (user/broker-supplied, or
         // previous-base) rate with a derived one. See convertToBase above.
         if (waybackDate == null && ev.exchangeRate == null) {
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
-            AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+          // Derived from the stored rates, not typed by anyone: automatic.
+          await automaticWrites(
+            () => (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+            ),
           );
         }
       } else {

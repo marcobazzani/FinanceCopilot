@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:finance_copilot/services/app_actions_controller.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/providers/providers.dart';
+import '../../services/sync/backup_sync_status.dart';
 import '../../utils/visualization_clock.dart';
 
 /// A single entry inside an [AppBarAction] submenu (e.g. a rebalance-scope
@@ -365,22 +366,45 @@ class _RefreshAction extends ConsumerWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.refresh),
-      tooltip: s.tooltipRefreshPrices,
+      tooltip: s.tooltipRefresh,
       onPressed: (isSyncing || reg == null) ? null : () => reg.manualRefresh(),
     );
   }
 }
 
+/// The sync indicator's LED on [icon]: a small dot, green when the Drive
+/// backup is newer than this device's data, red when it is older, none
+/// otherwise.
+Widget _withSyncLed(BackupSyncIndicator indicator, Widget icon) {
+  final color = switch (indicator) {
+    BackupSyncIndicator.backupNewer => Colors.green,
+    BackupSyncIndicator.backupOlder => Colors.red,
+    BackupSyncIndicator.off => null,
+  };
+  return Badge(isLabelVisible: color != null, smallSize: 8, backgroundColor: color, child: icon);
+}
+
+/// What the import/export action does for [indicator], as its tooltip or
+/// menu label.
+String _importExportLabel(AppStrings s, BackupSyncIndicator indicator) => switch (indicator) {
+  BackupSyncIndicator.backupNewer => s.syncBackupNewer,
+  BackupSyncIndicator.backupOlder => s.syncBackupOlder,
+  BackupSyncIndicator.off => s.tooltipImportExportDb,
+};
+
+/// Import/export, carrying the sync indicator: lit, a click goes straight to
+/// Restore or Backup (see [GlobalActionsRegistry.openImportExport]).
 class _ImportExportAction extends ConsumerWidget {
   const _ImportExportAction();
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reg = ref.watch(globalActionsRegistryProvider);
     final s = ref.watch(appStringsProvider);
+    final indicator = ref.watch(backupSyncStatusProvider).indicator;
     return IconButton(
-      icon: const Icon(Icons.import_export),
-      tooltip: s.tooltipImportExportDb,
-      onPressed: reg == null ? null : () => reg.showImportExportDialog(context),
+      icon: _withSyncLed(indicator, const Icon(Icons.import_export)),
+      tooltip: _importExportLabel(s, indicator),
+      onPressed: reg == null ? null : () => reg.openImportExport(context),
     );
   }
 }
@@ -430,7 +454,8 @@ class _ImportFileAction extends ConsumerWidget {
 /// Overflow ("⋮") menu. By default it holds the non-primary globals (privacy,
 /// time-travel, network-retry, import-file). On detail screens the local
 /// actions occupy the visible slots, so [includeAllGlobals] also folds in
-/// refresh, import/export, settings and support — keeping every global reachable.
+/// refresh, import/export, settings and support — keeping every global
+/// reachable, the sync indicator's LED included: it then shows on "⋮" too.
 class _GlobalActionsOverflow extends ConsumerWidget {
   const _GlobalActionsOverflow({this.includeAllGlobals = false});
 
@@ -442,9 +467,10 @@ class _GlobalActionsOverflow extends ConsumerWidget {
     final isPrivate = ref.watch(privacyModeProvider);
     final online = ref.watch(networkOnlineProvider);
     final isSyncing = ref.watch(isManualSyncingProvider);
+    final indicator = ref.watch(backupSyncStatusProvider).indicator;
     final s = ref.watch(appStringsProvider);
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert),
+      icon: _withSyncLed(includeAllGlobals ? indicator : BackupSyncIndicator.off, const Icon(Icons.more_vert)),
       onSelected: (action) async {
         switch (action) {
           case 'privacy':
@@ -456,7 +482,7 @@ class _GlobalActionsOverflow extends ConsumerWidget {
           case 'refresh':
             await reg?.manualRefresh();
           case 'importExport':
-            if (context.mounted) await reg?.showImportExportDialog(context);
+            if (context.mounted) await reg?.openImportExport(context);
           case 'settings':
             if (context.mounted) await reg?.showSettingsDialog(context);
           case 'support':
@@ -505,7 +531,7 @@ class _GlobalActionsOverflow extends ConsumerWidget {
               children: [
                 const Icon(Icons.refresh),
                 const SizedBox(width: 12),
-                Text(s.tooltipRefreshPrices),
+                Text(s.tooltipRefresh),
               ],
             ),
           ),
@@ -513,9 +539,9 @@ class _GlobalActionsOverflow extends ConsumerWidget {
             value: 'importExport',
             child: Row(
               children: [
-                const Icon(Icons.import_export),
+                _withSyncLed(indicator, const Icon(Icons.import_export)),
                 const SizedBox(width: 12),
-                Text(s.tooltipImportExportDb),
+                Flexible(child: Text(_importExportLabel(s, indicator))),
               ],
             ),
           ),
