@@ -17,7 +17,10 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 });
 
 /// Google Drive sync service (singleton). Every backup is stamped with a
-/// description of its snapshot, read back by the sync indicator.
+/// description of its snapshot and of what was edited in it by hand, read
+/// back by the sync indicator.
 final googleDriveSyncProvider = Provider<GoogleDriveSyncService>((ref) {
-  return GoogleDriveSyncService(snapshotProperties: describeBackupSnapshot);
+  return GoogleDriveSyncService(
+    snapshotProperties: (path) async => {...await describeBackupSnapshot(path), ...await describeSnapshotEdits(path)},
+  );
 });

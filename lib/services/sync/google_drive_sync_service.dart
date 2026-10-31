@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -12,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:finance_copilot/database/db_file_name.dart';
+import 'package:finance_copilot/services/sync/mobile_drive_client.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/services/app_settings.dart';
 
@@ -24,6 +24,15 @@ const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _googleClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
 const _googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 final _clientId = auth.ClientId(_googleClientId, _googleClientSecret);
+
+/// Google no longer accepts the session's sign-in, and could not renew it
+/// without the user: Drive needs a new sign-in.
+class DriveSignInExpired implements Exception {
+  const DriveSignInExpired();
+
+  @override
+  String toString() => 'DriveSignInExpired: the Google Drive sign-in must be renewed by the user';
+}
 
 /// Metadata about the remote DB file on Google Drive.
 class DriveFileInfo {
@@ -369,7 +378,7 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
     final account = _mobileAccount;
     if (account == null) return false;
     final authz = await account.authorizationClient.authorizeScopes([_driveScope]);
-    _useClient(authz.authClient(scopes: [_driveScope]));
+    _useClient(MobileDriveClient(GoogleSignInTokenSource(account, const [_driveScope]), token: authz.accessToken));
     _userEmail = account.email;
     _log.info('Mobile sign-in successful: $_userEmail');
     return true;
@@ -383,6 +392,39 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
     _userEmail = email;
   }
 
+  /// Test seam: signs in as a mobile session does, its access tokens coming
+  /// from [tokens], over [transport].
+  @visibleForTesting
+  void signInWithTokensForTest(DriveTokenSource tokens, http.Client transport, {String? email}) {
+    _useClient(MobileDriveClient(tokens, inner: transport));
+    _userEmail = email;
+  }
+
+  /// The session's Drive API for one operation, read once (a sign-out can
+  /// clear the session meanwhile); null when signed out. A mobile session
+  /// renews its access token first. When Google needs the user to sign in
+  /// again, that is flagged ([needsReauth]) and thrown as
+  /// [DriveSignInExpired].
+  Future<drive.DriveApi?> _sessionApi() async {
+    final api = _driveApi;
+    if (api == null) return null;
+    final client = _httpClient;
+    if (client is MobileDriveClient && !await client.refresh()) throw _signInExpired();
+    return api;
+  }
+
+  DriveSignInExpired _signInExpired() {
+    _needsReauth = true;
+    return const DriveSignInExpired();
+  }
+
+  /// Whether [error] is Drive refusing the session's access token.
+  static bool _isRejectedToken(Object error) {
+    if (error is drive.DetailedApiRequestError && error.status == 401) return true;
+    final msg = error.toString().toLowerCase();
+    return msg.contains('invalid_token') || msg.contains('unauthorized') || msg.contains('access was denied');
+  }
+
   // ── Sync ──────────────────────────────────────────
 
   Future<String> get _localDbPath async {
@@ -394,9 +436,9 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
   /// no session to look with). Throws when the lookup fails (auth/network):
   /// an unanswered lookup is no "no backup".
   @override
-  Future<DriveFileInfo?> getRemoteInfo() {
-    final api = _driveApi;
-    if (api == null) return Future.value();
+  Future<DriveFileInfo?> getRemoteInfo() async {
+    final api = await _sessionApi();
+    if (api == null) return null;
     return _remoteInfo(api);
   }
 
@@ -405,13 +447,7 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
   /// file next to the existing one, and Restore report there is none.
   Future<DriveFileInfo?> _remoteInfo(drive.DriveApi api) async {
     try {
-      final fileList = await api.files.list(
-        spaces: 'appDataFolder',
-        q: "name = '$dbFileName'",
-        $fields: 'files(id, name, modifiedTime, size, md5Checksum, appProperties)',
-        orderBy: 'modifiedTime desc',
-        pageSize: 1,
-      );
+      final fileList = await _listBackup(api);
       final files = fileList.files;
       if (files == null || files.isEmpty) return null;
       final f = files.first;
@@ -423,14 +459,39 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
       );
     } catch (e) {
       _log.warning('getRemoteInfo failed: $e');
-      // Detect token-invalid errors and flag re-auth so the UI can prompt.
-      // Silent sign-in returns success with stale cached creds; the failure
-      // only surfaces here on the first real API call.
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('invalid_token') || msg.contains('unauthorized') || msg.contains('access was denied')) {
-        _needsReauth = true;
-      }
       rethrow;
+    }
+  }
+
+  /// Lists the backup. When Drive refuses the access token (a mobile token can
+  /// be revoked before it expires), it is dropped and renewed once; when it
+  /// cannot be renewed (or, on desktop, the refresh token was revoked), the
+  /// session needs a new sign-in: [DriveSignInExpired].
+  Future<drive.FileList> _listBackup(drive.DriveApi api) async {
+    Future<drive.FileList> list() => api.files.list(
+      spaces: 'appDataFolder',
+      q: "name = '$dbFileName'",
+      $fields: 'files(id, name, modifiedTime, size, md5Checksum, appProperties)',
+      orderBy: 'modifiedTime desc',
+      pageSize: 1,
+    );
+    try {
+      return await list();
+    } catch (e) {
+      if (!_isRejectedToken(e)) rethrow;
+      final client = _httpClient;
+      if (client is MobileDriveClient) {
+        _log.info('Drive refused the access token ($e); renewing it');
+        await client.discard();
+        if (await client.refresh()) {
+          try {
+            return await list();
+          } catch (retry) {
+            if (!_isRejectedToken(retry)) rethrow;
+          }
+        }
+      }
+      throw _signInExpired();
     }
   }
 
@@ -448,7 +509,7 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
   Future<DriveFileInfo> backupToDrive() async {
     // Read the session once: signOut() can clear it while this awaits, and
     // every call below must go to the account the backup started on.
-    final api = _driveApi;
+    final api = await _sessionApi();
     if (api == null) throw StateError('not_signed_in');
     final snapshot = createSnapshot;
     if (snapshot == null) {
@@ -509,7 +570,7 @@ class GoogleDriveSyncService implements RemoteBackupProbe {
   /// if no remote backup exists. Throws on auth/network errors.
   Future<DriveFileInfo?> restoreFromDrive() async {
     // Read the session once (see backupToDrive).
-    final api = _driveApi;
+    final api = await _sessionApi();
     if (api == null) throw StateError('not_signed_in');
     final remote = await _remoteInfo(api);
     if (remote == null) return null;

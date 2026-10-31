@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/edit_log.dart';
 import 'package:finance_copilot/services/sync/backup_stamp.dart';
 import 'package:finance_copilot/services/sync/backup_sync_status.dart';
 import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
@@ -81,7 +82,7 @@ class BackupSyncController {
   Future<void> backedUp(DriveFileInfo uploaded) async {
     final remote = _remote = RemoteBackupFacts.of(uploaded);
     final edit = remote.stamped ? remote.lastManualEdit : await _localEdit();
-    _setBase(SyncBase(lastManualEdit: edit, remoteMd5: uploaded.md5Checksum));
+    _setBase(SyncBase(lastManualEdit: edit, remoteMd5: uploaded.md5Checksum, editLog: remote.editLog));
     await refresh();
   }
 
@@ -89,7 +90,8 @@ class BackupSyncController {
   /// the database reloads, while it still reads the restored data.
   Future<void> restored(DriveFileInfo restored) async {
     _remote = RemoteBackupFacts.of(restored);
-    _setBase(SyncBase(lastManualEdit: await _localEdit(), remoteMd5: restored.md5Checksum));
+    final edit = await _localEdit();
+    _setBase(SyncBase(lastManualEdit: edit, remoteMd5: restored.md5Checksum, editLog: await _localLog()));
     await refresh();
   }
 
@@ -134,7 +136,13 @@ class BackupSyncController {
     }
     final db = _database();
     try {
-      return resolveBackupSync(localEdit: await db.lastManualEdit(), base: _base, remote: _remote, schemaVersion: db.schemaVersion);
+      return resolveBackupSync(
+        localEdit: await db.lastManualEdit(),
+        localLog: await db.manualEditLog(),
+        base: _base,
+        remote: _remote,
+        schemaVersion: db.schemaVersion,
+      );
     } catch (e) {
       _log.fine('Backup check: could not read the local state: $e');
       return null;
@@ -146,6 +154,17 @@ class BackupSyncController {
       return await _database().lastManualEdit();
     } catch (e) {
       _log.warning('Backup check: could not read the last manual edit: $e');
+      return null;
+    }
+  }
+
+  /// This device's edit log; null when it cannot be read, which leaves the
+  /// lists of changes unknown until the next sync.
+  Future<EditLog?> _localLog() async {
+    try {
+      return await _database().manualEditLog();
+    } catch (e) {
+      _log.warning('Backup check: could not read the edit log: $e');
       return null;
     }
   }

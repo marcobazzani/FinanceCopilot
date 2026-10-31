@@ -1,3 +1,4 @@
+import '../database/edit_log.dart';
 import '../database/tables.dart';
 import '../services/classification/ledger_roles.dart';
 import '../services/classification/rule_transfer_service.dart' show RuleFileProblem;
@@ -256,6 +257,53 @@ class AppStrings {
   String get syncRestoreDiscardsLocalEdits => _it
       ? 'Questo dispositivo ha modifiche che il backup non contiene: il ripristino le elimina.'
       : 'This device has changes the backup lacks: restoring discards them.';
+  String syncBackupOlderCount(int n) => _it
+      ? (n == 1
+            ? '1 modifica non ancora salvata su Google Drive: clicca per fare il backup'
+            : '$n modifiche non ancora salvate su Google Drive: clicca per fare il backup')
+      : (n == 1
+            ? '1 change not backed up to Google Drive yet: click to back up'
+            : '$n changes not backed up to Google Drive yet: click to back up');
+  String get syncNotBackedUpYet => _it ? 'Non ancora nel backup:' : 'Not backed up yet:';
+  String get syncOnlyOnDrive => _it ? 'Solo su Drive:' : 'Only on Drive:';
+  String get syncNewInBackup => _it ? 'Novità nel backup:' : 'New in the backup:';
+  String get syncOnlyOnThisDevice => _it ? 'Solo su questo dispositivo:' : 'Only on this device:';
+
+  String editKindLabel(EditKind kind) => switch (kind) {
+    EditKind.added => _it ? 'Aggiunte' : 'Added',
+    EditKind.changed => _it ? 'Modifiche' : 'Changed',
+    EditKind.deleted => _it ? 'Eliminazioni' : 'Deleted',
+  };
+
+  String editAreaName(EditArea area) => switch (area) {
+    EditArea.accounts => _it ? 'conti' : 'accounts',
+    EditArea.transactions => _it ? 'movimenti dei conti' : 'account transactions',
+    EditArea.intermediaries => _it ? 'intermediari' : 'intermediaries',
+    EditArea.assets => _it ? 'asset' : 'assets',
+    EditArea.assetEvents => _it ? 'operazioni sugli asset' : 'asset operations',
+    EditArea.compositions => _it ? 'composizioni' : 'compositions',
+    EditArea.incomes => _it ? 'entrate' : 'income',
+    EditArea.categories => _it ? 'categorie' : 'categories',
+    EditArea.rules => _it ? 'regole' : 'rules',
+    EditArea.adjustments => _it ? 'aggiustamenti' : 'adjustments',
+    EditArea.pillars => _it ? 'pilastri e portafogli virtuali' : 'pillars and virtual portfolios',
+    EditArea.portfolioModels => _it ? 'modelli di portafoglio' : 'portfolio models',
+    EditArea.importSettings => _it ? 'impostazioni di importazione' : 'import settings',
+    EditArea.settings => _it ? 'impostazioni' : 'settings',
+    EditArea.other => _it ? 'altri dati' : 'other data',
+  };
+
+  /// [header], then one line per kind of change naming the areas it touched,
+  /// e.g. "• Added: accounts, assets".
+  String syncChangeList(String header, Set<EditChange> changes) => [
+    header,
+    for (final kind in EditKind.values)
+      if (changes.any((c) => c.$2 == kind))
+        '• ${editKindLabel(kind)}: ${[
+          for (final area in EditArea.values)
+            if (changes.contains((area, kind))) editAreaName(area),
+        ].join(', ')}',
+  ].join('\n');
 
   // ── Landing page ──────────────────────────────────────────
   String get landingTitle => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';

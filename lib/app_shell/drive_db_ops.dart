@@ -72,9 +72,10 @@ extension _AppShellDriveDbOps on _AppShellState {
 
   /// Tells the user, in their language, that a database transfer failed: the
   /// specific reason when there is one they can act on (a database from
-  /// another app version), otherwise [message]. The raw error only goes to the
-  /// log, which the caller writes.
+  /// another app version, a Drive sign-in to renew), otherwise [message]. The
+  /// raw error only goes to the log, which the caller writes.
   void _showTransferFailure(BuildContext context, Object error, String message) {
+    if (error is DriveSignInExpired) return _showReauthSnack(context, ref.read(googleDriveSyncProvider));
     final s = ref.read(appStringsProvider);
     showInfoSnack(
       context,
@@ -138,14 +139,16 @@ extension _AppShellDriveDbOps on _AppShellState {
     }
   }
 
-  /// A Backup or Restore confirmation: [body], plus [warning] when there is
-  /// one. Opened from the sync indicator ([fromIndicator]) it also offers the
+  /// A Backup or Restore confirmation: [body], then each known, non-empty list
+  /// of [changes] under its header, then [warning] when there is one. Opened
+  /// from the sync indicator ([fromIndicator]) it also offers the
   /// Import/Export dialog, out of reach otherwise while the indicator is lit.
   /// Says whether to go ahead.
   Future<bool> _confirmDriveTransfer(
     BuildContext context, {
     required String title,
     required String body,
+    List<(String header, Set<EditChange>? changes)> changes = const [],
     required String? warning,
     required String confirmLabel,
     required bool fromIndicator,
@@ -155,7 +158,12 @@ extension _AppShellDriveDbOps on _AppShellState {
     final choice = await showConfirmChoiceDialog(
       context,
       title: title,
-      content: warning == null ? body : '$body\n\n$warning',
+      content: [
+        body,
+        for (final (header, list) in changes)
+          if (list != null && list.isNotEmpty) s.syncChangeList(header, list),
+        ?warning,
+      ].join('\n\n'),
       confirmLabel: confirmLabel,
       cancelLabel: s.cancel,
       confirmColor: confirmColor,
@@ -177,12 +185,14 @@ extension _AppShellDriveDbOps on _AppShellState {
     final remoteInfo = existing != null ? _formatRemoteInfo(s, existing) : null;
     await backupSync.sawBackup(existing);
     if (!context.mounted) return;
+    final status = ref.read(backupSyncStatusProvider);
 
     final confirmed = await _confirmDriveTransfer(
       context,
       title: s.importExportBackupConfirmTitle,
       body: s.importExportBackupConfirmBody(remoteInfo),
-      warning: ref.read(backupSyncStatusProvider).backupOverwritesRemoteEdits ? s.syncBackupOverwritesRemoteEdits : null,
+      changes: [(s.syncNotBackedUpYet, status.localEdits), (s.syncOnlyOnDrive, status.remoteEdits)],
+      warning: status.backupOverwritesRemoteEdits ? s.syncBackupOverwritesRemoteEdits : null,
       confirmLabel: s.importExportBackupDrive,
       fromIndicator: fromIndicator,
     );
@@ -215,12 +225,14 @@ extension _AppShellDriveDbOps on _AppShellState {
       return;
     }
     final remoteInfo = _formatRemoteInfo(s, existing);
+    final status = ref.read(backupSyncStatusProvider);
 
     final confirmed = await _confirmDriveTransfer(
       context,
       title: s.importExportRestoreConfirmTitle,
       body: s.importExportRestoreConfirmBody(remoteInfo),
-      warning: ref.read(backupSyncStatusProvider).restoreDiscardsLocalEdits ? s.syncRestoreDiscardsLocalEdits : null,
+      changes: [(s.syncNewInBackup, status.remoteEdits), (s.syncOnlyOnThisDevice, status.localEdits)],
+      warning: status.restoreDiscardsLocalEdits ? s.syncRestoreDiscardsLocalEdits : null,
       confirmLabel: s.importExportRestoreDrive,
       confirmColor: Colors.red,
       fromIndicator: fromIndicator,
