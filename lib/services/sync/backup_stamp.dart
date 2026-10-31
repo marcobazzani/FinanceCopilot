@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/edit_log.dart';
 import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
 import 'package:finance_copilot/utils/logger.dart';
 
@@ -38,12 +39,60 @@ Future<Map<String, String?>> describeBackupSnapshot(String snapshotPath) async {
   }
 }
 
+/// App-property keys of a backup's [EditLog]: its row count, and one key per
+/// area holding the tokens of the kinds of change made to it.
+const _editsCountKey = 'edits_n';
+String _editsKeyOf(EditArea area) => 'edits_${area.name}';
+
+/// The app properties carrying [log] on a backup, so a lookup tells what it
+/// holds without downloading it. Every area is written, null when it has no
+/// edits: Drive keeps the keys an upload does not mention.
+Map<String, String?> editLogProperties(EditLog log) => {
+  _editsCountKey: '${log.changes}',
+  for (final area in EditArea.values)
+    _editsKeyOf(area): [
+      for (final kind in EditKind.values)
+        if (log.tokens[(area, kind)] case final token?) '${kind.name}:$token',
+    ].join(',').nullIfEmpty,
+};
+
+/// [editLogProperties] for the snapshot file at [snapshotPath]. Empty when
+/// the snapshot cannot be read: the backup goes up without the list of what
+/// it holds.
+Future<Map<String, String?>> describeSnapshotEdits(String snapshotPath) async {
+  try {
+    return editLogProperties(AppDatabase.readSnapshotFacts(snapshotPath).editLog);
+  } catch (e, st) {
+    _log.warning('Could not read the edit log of the backup snapshot', e, st);
+    return const {};
+  }
+}
+
+/// The [EditLog] carried by [properties]; null when the backup carries none
+/// (made by an app version that does not write it).
+EditLog? _editLogOf(Map<String, String> properties) {
+  final changes = int.tryParse(properties[_editsCountKey] ?? '');
+  if (changes == null) return null;
+  final kinds = EditKind.values.asNameMap();
+  final tokens = <EditChange, String>{
+    for (final area in EditArea.values)
+      for (final entry in (properties[_editsKeyOf(area)] ?? '').split(','))
+        if (entry.split(':') case [final name, final token])
+          if (kinds[name] case final kind?) (area, kind): token,
+  };
+  return EditLog(changes: changes, tokens: tokens);
+}
+
+extension on String {
+  String? get nullIfEmpty => isEmpty ? null : this;
+}
+
 /// The Drive backup as a lookup found it.
 class RemoteBackupFacts {
   /// No backup on Drive.
-  const RemoteBackupFacts.none() : exists = false, md5 = null, stamped = false, lastManualEdit = null, schemaVersion = null;
+  const RemoteBackupFacts.none() : exists = false, md5 = null, stamped = false, lastManualEdit = null, schemaVersion = null, editLog = null;
 
-  const RemoteBackupFacts({required this.md5, required this.stamped, this.lastManualEdit, this.schemaVersion}) : exists = true;
+  const RemoteBackupFacts({required this.md5, required this.stamped, this.lastManualEdit, this.schemaVersion, this.editLog}) : exists = true;
 
   /// Reads the stamp on [info] (null: no backup). The stamp counts only while
   /// it matches the file's content.
@@ -56,6 +105,7 @@ class RemoteBackupFacts {
       stamped: stamped,
       lastManualEdit: stamped ? properties[_lastManualEditKey] : null,
       schemaVersion: stamped ? int.tryParse(properties[_schemaVersionKey] ?? '') : null,
+      editLog: stamped ? _editLogOf(properties) : null,
     );
   }
 
@@ -74,4 +124,8 @@ class RemoteBackupFacts {
 
   /// The backup's drift schema version, when [stamped].
   final int? schemaVersion;
+
+  /// What was edited by hand in the backup's data, when [stamped] by an app
+  /// version that records it.
+  final EditLog? editLog;
 }

@@ -384,11 +384,14 @@ Widget _withSyncLed(BackupSyncIndicator indicator, Widget icon) {
   return Badge(isLabelVisible: color != null, smallSize: 8, backgroundColor: color, child: icon);
 }
 
-/// What the import/export action does for [indicator], as its tooltip or
-/// menu label.
-String _importExportLabel(AppStrings s, BackupSyncIndicator indicator) => switch (indicator) {
+/// What the import/export action does for [status], as its tooltip or menu
+/// label; an older backup also says how many changes it lacks, when known.
+String _importExportLabel(AppStrings s, BackupSyncStatus status) => switch (status.indicator) {
   BackupSyncIndicator.backupNewer => s.syncBackupNewer,
-  BackupSyncIndicator.backupOlder => s.syncBackupOlder,
+  BackupSyncIndicator.backupOlder => switch (status.localChanges) {
+    final n? when n > 0 => s.syncBackupOlderCount(n),
+    _ => s.syncBackupOlder,
+  },
   BackupSyncIndicator.off => s.tooltipImportExportDb,
 };
 
@@ -400,10 +403,10 @@ class _ImportExportAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reg = ref.watch(globalActionsRegistryProvider);
     final s = ref.watch(appStringsProvider);
-    final indicator = ref.watch(backupSyncStatusProvider).indicator;
+    final status = ref.watch(backupSyncStatusProvider);
     return IconButton(
-      icon: _withSyncLed(indicator, const Icon(Icons.import_export)),
-      tooltip: _importExportLabel(s, indicator),
+      icon: _withSyncLed(status.indicator, const Icon(Icons.import_export)),
+      tooltip: _importExportLabel(s, status),
       onPressed: reg == null ? null : () => reg.openImportExport(context),
     );
   }
@@ -467,7 +470,8 @@ class _GlobalActionsOverflow extends ConsumerWidget {
     final isPrivate = ref.watch(privacyModeProvider);
     final online = ref.watch(networkOnlineProvider);
     final isSyncing = ref.watch(isManualSyncingProvider);
-    final indicator = ref.watch(backupSyncStatusProvider).indicator;
+    final status = ref.watch(backupSyncStatusProvider);
+    final indicator = status.indicator;
     final s = ref.watch(appStringsProvider);
     return PopupMenuButton<String>(
       icon: _withSyncLed(includeAllGlobals ? indicator : BackupSyncIndicator.off, const Icon(Icons.more_vert)),
@@ -541,7 +545,7 @@ class _GlobalActionsOverflow extends ConsumerWidget {
               children: [
                 _withSyncLed(indicator, const Icon(Icons.import_export)),
                 const SizedBox(width: 12),
-                Flexible(child: Text(_importExportLabel(s, indicator))),
+                Flexible(child: Text(_importExportLabel(s, status))),
               ],
             ),
           ),

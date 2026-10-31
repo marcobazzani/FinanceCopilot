@@ -15,6 +15,7 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
+import 'database/edit_log.dart';
 import 'database/manual_edit_tracker.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
@@ -252,19 +253,24 @@ class _AppShellState extends ConsumerState<AppShell> {
       _startBackupChecks();
     } else if (sync.needsReauth && mounted) {
       _log.info('Drive sync: needs re-auth (use Settings to sign in)');
-      final s = ref.read(appStringsProvider);
-      showInfoSnack(
-        context,
-        s.syncReauthNeeded,
-        duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: s.settingsSyncSignIn,
-          onPressed: () async {
-            if (await _signInToDrive(sync)) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-          },
-        ),
-      );
+      _showReauthSnack(context, sync);
     }
+  }
+
+  /// Asks for a new Drive sign-in, with the button that starts it.
+  void _showReauthSnack(BuildContext context, GoogleDriveSyncService sync) {
+    final s = ref.read(appStringsProvider);
+    showInfoSnack(
+      context,
+      s.syncReauthNeeded,
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: s.settingsSyncSignIn,
+        onPressed: () async {
+          if (await _signInToDrive(sync)) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
+        },
+      ),
+    );
   }
 
   /// An interactive Drive sign-in from the shell (not from a dialog, whose

@@ -11,6 +11,7 @@ import '../services/import/stored_import_data.dart';
 import '../utils/logger.dart';
 import 'category_seeds.dart';
 import 'db_file_name.dart';
+import 'edit_log.dart';
 import 'manual_edit_tracker.dart';
 import 'tables.dart';
 
@@ -88,13 +89,22 @@ class AppDatabase extends _$AppDatabase {
   Future<String?> lastManualEdit() async =>
       (await (select(appConfigs)..where((c) => c.key.equals(kLastManualEditKey))).getSingleOrNull())?.value;
 
-  /// The manual-edit stamp and drift schema version of the database file at
-  /// [path] (a backup snapshot), read straight from the file.
-  static ({String? lastManualEdit, int schemaVersion}) readSnapshotFacts(String path) {
+  /// What was edited by hand (see [ManualEditTracker]); empty when nothing
+  /// was since tracking began.
+  Future<EditLog> manualEditLog() async =>
+      EditLog.decode((await (select(appConfigs)..where((c) => c.key.equals(kManualEditLogKey))).getSingleOrNull())?.value);
+
+  /// The manual-edit stamp, edit log and drift schema version of the database
+  /// file at [path] (a backup snapshot), read straight from the file.
+  static ({String? lastManualEdit, EditLog editLog, int schemaVersion}) readSnapshotFacts(String path) {
     final raw = sqlite3.open(path, mode: OpenMode.readOnly);
     try {
-      final rows = raw.select('SELECT value FROM app_configs WHERE key = ?', [kLastManualEditKey]);
-      return (lastManualEdit: rows.isEmpty ? null : rows.first['value'] as String?, schemaVersion: raw.userVersion);
+      String? config(String key) {
+        final rows = raw.select('SELECT value FROM app_configs WHERE key = ?', [key]);
+        return rows.isEmpty ? null : rows.first['value'] as String?;
+      }
+
+      return (lastManualEdit: config(kLastManualEditKey), editLog: EditLog.decode(config(kManualEditLogKey)), schemaVersion: raw.userVersion);
     } finally {
       raw.close();
     }

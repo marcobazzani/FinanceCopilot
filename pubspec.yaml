@@ -55,7 +55,6 @@ dependencies:
 
   # Google Drive sync
   google_sign_in: ^7.2.0
-  extension_google_sign_in_as_googleapis_auth: ^3.0.0
   googleapis: ^17.0.0
   googleapis_auth: ^2.3.4
   http: ^1.6.0
@@ -83,6 +82,9 @@ dev_dependencies:
 
   # Builds XLSX files from their XML parts in tests (already used by excel)
   archive: ^4.3.0
+
+  # Fakes Google Sign-In's platform side in tests (already used by google_sign_in)
+  google_sign_in_platform_interface: ^3.1.0
 
   # Drift code generation
   drift_dev: ^2.35.0
