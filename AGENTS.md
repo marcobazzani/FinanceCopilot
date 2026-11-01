@@ -141,6 +141,8 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
 1. Merge `develop` into `main` (via PR if protected, else direct merge).
 2. Summarize changes: run `git log --oneline vPREVIOUS..HEAD` and write a user-facing summary.
+   - **The notes describe what changed for someone upgrading from vPREVIOUS.** Never mention a fix for a bug vPREVIOUS did not have: a bug introduced after vPREVIOUS and fixed before this release never reached a user. Example: a bug introduced after v1.9.1 and fixed before v1.9.2 is not mentioned in the v1.9.2 notes, neither in the summary nor in the commit list (drop those commits from it; the script's auto-generated notes list every commit, so write the notes to a file and pass `--notes-file`). That work is part of the feature it belongs to.
+   - Before listing a fix, check that the bug is present at the vPREVIOUS tag: the code it fixes exists there (`git show vPREVIOUS:<file>`), or the commit that introduced the bug is already in it (`git merge-base --is-ancestor <commit> vPREVIOUS`).
 3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`
 4. Create GitHub Release: `gh release create vX.Y.Z --title "vX.Y.Z -- short description" --notes "..."`
 5. Wait for CI to complete: `gh run list --branch vX.Y.Z --limit 1` -- CI builds artifacts, attaches to release, updates Homebrew tap.
