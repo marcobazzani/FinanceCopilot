@@ -5,9 +5,9 @@
 //    the count was computed but shown nowhere — now it is on the Cash Flow tab
 //    and under the Health summary.
 //  * Health: a held asset without a market value today was silently left out
-//    of the concentration (HHI) — counted as worth 0 — while the summary
-//    counted only the assets the role charts could not value. It is now
-//    counted under the summary too.
+//    of the concentration — counted as worth 0 — while the summary counted
+//    only the assets the role charts could not value. It is now counted under
+//    the summary too.
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,7 +97,7 @@ void main() {
       try {
         expect(find.text(s.unpricedExcludedFromTotals(1)), findsOneWidget);
         expect(
-          find.descendant(of: h.kpiCard(s.hhiLabel), matching: find.text(s.ratingNa)),
+          find.descendant(of: h.kpiCard(s.kpiLargestPosition), matching: find.text(s.ratingNa)),
           findsOneWidget,
           reason: 'nothing valued to measure',
         );

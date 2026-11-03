@@ -239,7 +239,7 @@ void main() {
     await pumpDashboard(tester);
     try {
       await setPrivate(tester, true);
-      await openInfo(tester, 'FI Target Progress');
+      await openInfo(tester, 'FIRE number');
 
       Finder valueOf(Finder label) {
         final row = find.ancestor(of: label, matching: find.byType(Row)).first;
@@ -247,11 +247,15 @@ void main() {
         return find.descendant(of: row, matching: find.byWidgetPredicate((w) => w is Text && w.data != null && w.data != labelText));
       }
 
+      // The dialog's title and its FIRE number row read the same: the row is the later one.
+      final fireNumberRow = find.descendant(of: find.byType(AlertDialog), matching: find.text('FIRE number')).last;
       for (final label in [
         find.text('Estimated annual expenses'),
         find.textContaining('Current-year projection'),
         find.text('  Previous year'),
-        find.text('FI Target'),
+        fireNumberRow,
+        find.text('Investable net worth'),
+        find.text('Still to go'),
       ]) {
         expect(label, findsOneWidget);
         final value = valueOf(label);

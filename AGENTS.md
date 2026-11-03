@@ -289,6 +289,8 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)
 - `lib/ui/screens/dashboard/cashflow_tab.dart` — Canonical collapsible-card (ExpansionTile) reference
 - `lib/ui/screens/dashboard/health_tab.dart` — Financial Health KPIs
+- `lib/services/pillars/financial_health_service.dart` — Pure Health KPIs: ratings, category scores (the summary score is the mean of the categories), the Liquidity / Financial & Wealth / Debt KPIs, FIRE number, Largest Position, Annualized Return
+- `lib/services/pillars/health_balance_sheet.dart` — The figures every Health ratio is built from, read from the History series and named as the app names them: Cash = Accounts + Money Market, Net Worth = Total Assets chart, Owed, Gross Assets, Credit Lines (never wealth or cash), investable net worth
 - `lib/ui/screens/dashboard/totals_table.dart` — Totals with drill-down
 - `lib/ui/screens/allocation/allocation_tab.dart` — Portfolio allocation donuts
 - `lib/ui/screens/assets/assets_screen.dart` — Asset list + create dialog

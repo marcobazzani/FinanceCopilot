@@ -97,7 +97,7 @@ class DefaultChartsExporter {
     for (final chart in charts) {
       final entry = <String, dynamic>{};
       // Distinguish role-tagged charts ("cash"/"saving"/...) from generic.
-      const roleTypes = {'cash', 'saving', 'portfolio', 'liquid_investments', 'net_asset_value'};
+      const roleTypes = {'cash', 'saving', 'portfolio', 'liquid_investments', 'net_asset_value', 'total_assets'};
       if (roleTypes.contains(chart.widgetType)) {
         entry['role'] = chart.widgetType;
       } else {

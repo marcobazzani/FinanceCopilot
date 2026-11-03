@@ -352,9 +352,6 @@ class AppStrings {
   String get healthSummary => _it ? 'Riepilogo' : 'Summary';
   String get healthKpis => _it ? 'Indicatori ed Indici' : 'KPIs & Indices';
   String get healthPerformance => _it ? 'Performance e Diversificazione' : 'Performance & Diversification';
-  String get kpiToday => _it ? 'Oggi' : 'Today';
-  String get kpiYtd => _it ? 'Da inizio anno' : 'YTD';
-  String get kpiAllTime => _it ? 'Dall\'inizio' : 'All Time';
   String get healthDetails => _it ? 'Dettagli' : 'Details';
 
   // Ratings
@@ -362,12 +359,12 @@ class AppStrings {
   String get ratingBuono => _it ? 'Buono' : 'Good';
   String get ratingSufficiente => _it ? 'Sufficiente' : 'Fair';
   String get ratingScarso => _it ? 'Scarso' : 'Poor';
-  String get ratingAlto => _it ? 'Alto' : 'High';
   String get ratingNa => _it ? 'N/D' : 'N/A';
 
   // Category headers
   String get healthCatLiquidity => _it ? 'Liquidità' : 'Liquidity';
   String get healthCatWealth => _it ? 'Finanziari e Ricchezza' : 'Financial & Wealth';
+  String get healthCatDebt => _it ? 'Debiti' : 'Debt';
 
   // KPI names
   String get kpiLiquidityRatio => _it ? 'Indice di liquidità patrimoniale' : 'Net Worth Liquidity Ratio';
@@ -376,22 +373,32 @@ class AppStrings {
   String get kpiInvestmentWeight => _it ? 'Peso del capitale investito' : 'Investment Weight';
   String get kpiLiquidAssetRatio => _it ? 'Indice di liquidabilità patrimoniale' : 'Liquid Asset Ratio';
   String get kpiIncomeToWealth => _it ? 'Tasso di sproporzione entrate/patrimonio' : 'Income-to-Wealth Ratio';
-  String get kpiFireProgress => _it ? 'Progresso verso target FI' : 'FI Target Progress';
+  String get kpiFireNumber => _it ? 'Numero FIRE' : 'FIRE number';
+  String get kpiDebtToAssets => _it ? 'Debiti su patrimonio lordo' : 'Debt-to-Assets';
+  String get kpiCreditLineUsage => _it ? 'Utilizzo dei fidi' : 'Credit-Line Usage';
+  String get kpiAnnualizedReturn => _it ? 'Rendimento annualizzato' : 'Annualized Return';
+  String get kpiLargestPosition => _it ? 'Posizione maggiore' : 'Largest Position';
 
   // KPI descriptions by rating
   String kpiCoverageDesc(int months) => _it
       ? 'La tua liquidità copre le tue spese per ${months == 1 ? '1 mese' : '$months mesi'}.'
       : 'Your cash covers your expenses for ${months == 1 ? '1 month' : '$months months'}.';
+  String get kpiCoverageNoCash => _it
+      ? 'Non hai liquidità per coprire le spese: i conti scoperti superano i fondi monetari.'
+      : 'You have no cash to cover your expenses: your overdrawn accounts outweigh your money-market funds.';
   String kpiFireInsufficientData() =>
-      _it ? 'Servono spese annuali registrate per stimare il target FI.' : 'Annual expenses are required to estimate the FI target.';
-  String get fireDialogTitle => _it ? 'Progresso verso target FI' : 'FI Target Progress';
+      _it ? 'Servono spese annuali registrate per stimare il numero FIRE.' : 'Annual expenses are required to estimate the FIRE number.';
+  String get fireDialogTitle => _it ? 'Numero FIRE' : 'FIRE number';
   String get fireDialogIntro => _it
-      ? 'Questo indicatore mostra quanto il tuo patrimonio attuale copra il target FI stimato dalle spese annue e dallo SWR scelto. È un indicatore di progresso, non una simulazione di pensionamento.'
-      : 'This indicator shows how much of the estimated FI target is covered by your current net worth, based on annual expenses and the chosen SWR. It is a progress metric, not a retirement simulation.';
+      ? 'Il numero FIRE è il capitale investito che pagherebbe le tue spese annuali per sempre con lo SWR scelto: spese annue stimate ÷ SWR. L\'indicatore mostra quanta parte ne copre già il tuo patrimonio investibile (Net Asset Value senza gli aggiustamenti in uscita, gli immobili e gli alternativi; i fondi pensione contano, i debiti sono sottratti). È un indicatore di progresso, non una simulazione di pensionamento.'
+      : 'The FIRE number is the invested wealth that would pay your yearly expenses for good at the chosen SWR: estimated annual expenses ÷ SWR. The card shows how much of it your investable net worth already covers (Net Asset Value without outflow adjustments, real estate and alternative assets; pension funds count, debts are subtracted). It is a progress metric, not a retirement simulation.';
   String get fireSwrLabel => _it ? 'Tasso di prelievo sicuro (SWR)' : 'Safe Withdrawal Rate (SWR)';
   String get fireSwrHint => _it ? 'es. 2,75 = prelievo del 2,75% l\'anno' : 'e.g. 2.75 = 2.75% per year';
-  String get fireNumberLabel => _it ? 'Target FI' : 'FI Target';
+  String get fireNumberLabel => _it ? 'Numero FIRE' : 'FIRE number';
+  String get fireAssetsLabel => _it ? 'Patrimonio investibile' : 'Investable net worth';
+  String get fireGapLabel => _it ? 'Ancora da raggiungere' : 'Still to go';
   String get fireProgressLabel => _it ? 'Copertura target' : 'Target coverage';
+  String kpiFireReached(String pct) => _it ? '$pct raggiunto' : '$pct reached';
   String get fireResetDefault => _it ? 'Ripristina predefinito' : 'Reset default';
   String get fireSwrInvalid => _it ? 'Inserisci un numero positivo' : 'Enter a positive number';
   String get fireExpensesEstimateLabel => _it ? 'Spese annue stimate' : 'Estimated annual expenses';
@@ -1687,10 +1694,40 @@ class AppStrings {
   String get kpiFormulaExpenseCoverage => _it ? 'Liquidità / Spese mensili' : 'Cash / Monthly Expenses';
   String get kpiFormulaSavingsRate => _it ? 'Risparmi / Entrate x 100' : 'Savings / Income x 100';
   String get kpiFormulaInvestmentWeight => _it ? 'Investimenti / Patrimonio lordo x 100' : 'Investments / Gross Assets x 100';
-  String get kpiFormulaLiquidAssetRatio =>
-      _it ? '(Liquidità + Investimenti liquidi) / Patrimonio lordo x 100' : '(Cash + Liquid Investments) / Gross Assets x 100';
+  String get kpiFormulaLiquidAssetRatio => _it
+      ? '(Conti in positivo + Investimenti liquidi) / Patrimonio lordo x 100'
+      : '(Accounts above zero + Liquid Investments) / Gross Assets x 100';
   String get kpiFormulaIncomeToWealth => _it ? 'Entrate (12 mesi) / Patrimonio netto x 100' : 'Income (12m) / Net Worth x 100';
+  String get kpiFormulaDebtToAssets => _it ? 'Debiti / Patrimonio lordo x 100' : 'Owed / Gross Assets x 100';
+  String get kpiFormulaCreditLineUsage => _it ? 'Conti scoperti / Fidi x 100' : 'Overdrawn Accounts / Credit Lines x 100';
+  String get kpiFormulaAnnualizedReturn => _it ? 'Rendimento ponderato nel tempo, all\'anno' : 'Time-weighted return, per year';
+  String get kpiFormulaLargestPosition =>
+      _it ? 'Maggiore azione o cripto / Valore del portafoglio x 100' : 'Largest Stock or Crypto / Portfolio value x 100';
   String get kpiUnitMonths => _it ? ' mesi' : ' months';
+
+  // The figures behind a Health formula, named as the app names them. The
+  // amounts are position size: they sit below the symbolic first line, which
+  // privacy mode blurs as one block.
+  String healthDefCash(String accounts, String moneyMarket) =>
+      _it ? 'Liquidità = Conti + Monetario: $accounts + $moneyMarket' : 'Cash = Accounts + Money Market: $accounts + $moneyMarket';
+  String get healthDefNetWorth => _it ? 'Patrimonio netto = grafico Total Assets' : 'Net Worth = Total Assets chart';
+  String healthDefGrossAssets(String netWorth, String owed) =>
+      _it ? 'Patrimonio lordo = Patrimonio netto + Debiti: $netWorth + $owed' : 'Gross Assets = Net Worth + Owed: $netWorth + $owed';
+  String healthDefOwed(String accounts, String liabilities) => _it
+      ? 'Debiti = Conti scoperti + Passività: $accounts + $liabilities'
+      : 'Owed = overdrawn Accounts + Liabilities: $accounts + $liabilities';
+  String healthDefMonthlyExpenses(String annual) =>
+      _it ? 'Spese mensili = spese annue stimate / 12: $annual / 12' : 'Monthly Expenses = estimated annual expenses / 12: $annual / 12';
+  String get healthDefMonthlyExpensesThisYear => _it
+      ? 'Spese mensili = media di quest\'anno (ancora nessun anno precedente)'
+      : 'Monthly Expenses = this year\'s average (no previous year yet)';
+  String healthCreditLinesNote(String unused, int months) => _it
+      ? 'Fidi non usati: $unused (circa $months mesi in più, non conteggiati)'
+      : 'Unused Credit Lines: $unused (about $months more months, not counted)';
+  String kpiLargestPositionLine(String position, String value, String total) => '$position: $value / $total x 100';
+  String get kpiNoSinglePositions => _it ? 'Nessuna azione o cripto in portafoglio' : 'No single stock or crypto held';
+  String kpiReturnSince(String date, String pct) => _it ? 'Dal $date: $pct' : 'Since $date: $pct';
+  String kpiReturnPerYear(String pct) => _it ? 'All\'anno: $pct' : 'Per year: $pct';
   // Health KPI descriptions, one member per rating.
   String get kpiLiquidityDescOttimo =>
       _it ? 'Ottima liquidità! Hai un buon cuscinetto per le emergenze.' : 'Excellent liquidity! You have a good emergency cushion.';
@@ -1708,9 +1745,17 @@ class AppStrings {
       _it ? 'Tasso di risparmio nella media, cerca di migliorarlo.' : 'Average savings rate, try to improve it.';
   String get kpiSavingsDescScarso =>
       _it ? 'Tasso di risparmio basso. Cerca di ridurre le spese non essenziali.' : 'Low savings rate. Try reducing non-essential expenses.';
-  String get kpiInvestWeightDescText => _it
-      ? 'I tuoi investimenti finanziari hanno il giusto spazio nel tuo patrimonio complessivo.'
-      : 'Your financial investments have the right weight in your overall wealth.';
+  String get kpiInvestWeightDescOttimo =>
+      _it ? 'Gran parte di ciò che possiedi è investito sui mercati finanziari.' : 'Most of what you own is invested in the financial markets.';
+  String get kpiInvestWeightDescBuono => _it
+      ? 'Una buona parte di ciò che possiedi è investita: potresti metterne al lavoro di più.'
+      : 'A good part of what you own is invested: you could put more of it to work.';
+  String get kpiInvestWeightDescSufficiente => _it
+      ? 'Solo una parte di ciò che possiedi è investita: il denaro fermo perde valore con l\'inflazione.'
+      : 'Only part of what you own is invested: idle money loses value to inflation.';
+  String get kpiInvestWeightDescScarso => _it
+      ? 'Quasi nulla di ciò che possiedi è investito: valuta di mettere al lavoro i tuoi risparmi.'
+      : 'Almost nothing of what you own is invested: consider putting your savings to work.';
   String get kpiLiquidAssetDescGood => _it
       ? 'Gran parte del tuo patrimonio è liquidabile in breve tempo: le spese impreviste non sono un problema.'
       : 'Most of your wealth is quickly convertible to cash: unexpected expenses are manageable.';
@@ -1723,19 +1768,52 @@ class AppStrings {
       ? 'Le tue entrate sono troppo basse rispetto al tuo patrimonio. Fai attenzione ai tuoi investimenti.'
       : 'Your income is too low relative to your wealth. Pay attention to your investments.';
   String get kpiFireDescOttimo =>
-      _it ? 'Il tuo patrimonio copre completamente il target FI stimato.' : 'Your net worth fully covers the estimated FI target.';
+      _it ? 'Il tuo patrimonio investibile copre completamente il numero FIRE.' : 'Your investable net worth fully covers the FIRE number.';
   String get kpiFireDescBuono => _it
-      ? 'Il tuo patrimonio copre una buona parte del target FI stimato.'
-      : 'Your net worth covers a good portion of the estimated FI target.';
-  String get kpiFireDescSufficiente =>
-      _it ? 'Il tuo patrimonio copre solo in parte il target FI stimato.' : 'Your net worth covers only part of the estimated FI target.';
+      ? 'Il tuo patrimonio investibile copre una buona parte del numero FIRE.'
+      : 'Your investable net worth covers a good portion of the FIRE number.';
+  String get kpiFireDescSufficiente => _it
+      ? 'Il tuo patrimonio investibile copre solo in parte il numero FIRE.'
+      : 'Your investable net worth covers only part of the FIRE number.';
   String get kpiFireDescScarso =>
-      _it ? 'Il tuo patrimonio è ancora lontano dal target FI stimato.' : 'Your net worth is still far from the estimated FI target.';
+      _it ? 'Il tuo patrimonio investibile è ancora lontano dal numero FIRE.' : 'Your investable net worth is still far from the FIRE number.';
+  String get kpiDebtDescOttimo =>
+      _it ? 'I debiti sono una parte trascurabile di ciò che possiedi.' : 'Debt is a negligible part of what you own.';
+  String get kpiDebtDescBuono => _it ? 'I debiti sono una parte gestibile di ciò che possiedi.' : 'Debt is a manageable part of what you own.';
+  String get kpiDebtDescSufficiente =>
+      _it ? 'Una parte consistente di ciò che possiedi è finanziata a debito.' : 'A large part of what you own is financed by debt.';
+  String get kpiDebtDescScarso =>
+      _it ? 'I debiti pesano molto su ciò che possiedi. Valuta di ridurli.' : 'Debt weighs heavily on what you own. Consider paying it down.';
+  String get kpiNoCreditLines => _it ? 'Non hai fidi: niente da misurare.' : 'You have no credit lines: nothing to measure.';
+  String get kpiCreditUsageDescOttimo => _it ? 'Usi solo una piccola parte dei tuoi fidi.' : 'You use only a small part of your credit lines.';
+  String get kpiCreditUsageDescBuono => _it ? 'Usi una parte moderata dei tuoi fidi.' : 'You use a moderate part of your credit lines.';
+  String get kpiCreditUsageDescSufficiente =>
+      _it ? 'Usi gran parte dei tuoi fidi: resta poco margine.' : 'You use a large part of your credit lines: little room is left.';
+  String get kpiCreditUsageDescScarso => _it ? 'I tuoi fidi sono quasi esauriti.' : 'Your credit lines are almost used up.';
+  String get kpiAnnualizedReturnNeedsYear => _it
+      ? 'Servono almeno un anno di storico degli investimenti per annualizzare il rendimento.'
+      : 'At least a year of investing history is needed to annualize the return.';
+  String get kpiReturnDescOttimo =>
+      _it ? 'I tuoi investimenti crescono a un ritmo annuo molto buono.' : 'Your investments grow at a strong yearly rate.';
+  String get kpiReturnDescBuono =>
+      _it ? 'I tuoi investimenti crescono a un buon ritmo annuo.' : 'Your investments grow at a healthy yearly rate.';
+  String get kpiReturnDescSufficiente => _it
+      ? 'I tuoi investimenti crescono lentamente: poco sopra l\'inflazione o meno.'
+      : 'Your investments grow slowly: about as fast as inflation or less.';
+  String get kpiReturnDescScarso =>
+      _it ? 'I tuoi investimenti hanno perso valore nel periodo.' : 'Your investments have lost value over the period.';
+  String get kpiPositionDescOttimo =>
+      _it ? 'Nessuna singola azione o cripto pesa molto sul tuo portafoglio.' : 'No single stock or crypto weighs much in your portfolio.';
+  String get kpiPositionDescBuono => _it
+      ? 'La tua azione o cripto maggiore è una parte moderata del portafoglio.'
+      : 'Your largest single stock or crypto is a moderate part of your portfolio.';
+  String get kpiPositionDescSufficiente =>
+      _it ? 'Un\'azione o cripto è una parte consistente del tuo portafoglio.' : 'One stock or crypto is a large part of your portfolio.';
+  String get kpiPositionDescScarso => _it ? 'Un\'azione o cripto domina il tuo portafoglio.' : 'One stock or crypto dominates your portfolio.';
 
   /// Months of current-year data behind the FIRE expense projection.
   String fireProjectionMonths(int n) => _it ? (n == 1 ? '(1 mese)' : '($n mesi)') : '(${n}m)';
   String get hhiLabel => 'HHI';
-  String get hhiFullName => _it ? 'Indice di Herfindahl-Hirschman' : 'Herfindahl-Hirschman Index';
   String terUnknownExcluded(int n) => _it
       ? (n == 1 ? '1 fondo senza TER escluso dalla media' : '$n fondi senza TER esclusi dalla media')
       : (n == 1 ? '1 fund without a TER excluded from the average' : '$n funds without a TER excluded from the average');

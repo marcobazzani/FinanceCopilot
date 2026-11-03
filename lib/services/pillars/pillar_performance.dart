@@ -28,6 +28,9 @@ class PillarScopedHistory {
 
 class PillarPerformanceSnapshot {
   final DateTime asOfDate;
+
+  /// The day the earliest included asset's history starts; null without any.
+  final DateTime? inceptionDate;
   final double marketValue;
   final double netInvested;
   final double absoluteReturnAmount;
@@ -43,6 +46,7 @@ class PillarPerformanceSnapshot {
 
   const PillarPerformanceSnapshot({
     required this.asOfDate,
+    this.inceptionDate,
     required this.marketValue,
     required this.netInvested,
     required this.absoluteReturnAmount,
@@ -167,6 +171,7 @@ PillarPerformanceSnapshot computePillarPerformanceSnapshot({
 
   return PillarPerformanceSnapshot(
     asOfDate: normalizedAsOf,
+    inceptionDate: history.inceptionDate,
     marketValue: endingMarketValue,
     netInvested: endingNetInvested,
     absoluteReturnAmount: absoluteReturnAmount,

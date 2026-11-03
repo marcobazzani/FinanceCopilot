@@ -2,8 +2,8 @@
 // a failed load says so, and a KPI whose inputs are missing reads "-" and
 // N/A instead of being computed — and rated — from placeholder zeros (no
 // income read as a 0% savings rate rated Poor, no expenses as 0 months of
-// coverage rated Poor, no holdings as an HHI of 0 rated Excellent, no price
-// data as 0.00%).
+// coverage rated Poor, no holdings as a largest position of 0% rated
+// Excellent, no investing history as a 0.00% yearly return).
 import 'dart:async';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
@@ -64,14 +64,58 @@ void main() {
         );
   }
 
-  testWidgets('no price data: the price-change KPIs read "-" and N/A, never 0.00%', (tester) async {
-    await h.seed();
-    await h.pump(tester, overrides: [assetDailyChangesProvider.overrideWith((ref, date) async => const <AssetDailyChange>[])]);
+  testWidgets('under a year of investing history: the yearly return reads "-" and N/A with the reason, never a rate for a few months', (
+    tester,
+  ) async {
+    final acct = await h.db.into(h.db.accounts).insert(AccountsCompanion.insert(name: 'Main'));
+    await h.db
+        .into(h.db.transactions)
+        .insert(
+          TransactionsCompanion.insert(
+            accountId: acct,
+            operationDate: DateTime(2025, 11, 1),
+            valueDate: DateTime(2025, 11, 1),
+            amount: 15000,
+            balanceAfter: const Value(15000),
+          ),
+        );
+    final broker = await h.db.into(h.db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker'));
+    final fund = await h.db
+        .into(h.db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Fund',
+            assetType: AssetType.stockEtf,
+            valuationMethod: ValuationMethod.marketPrice,
+            intermediaryId: broker,
+          ),
+        );
+    await h.db
+        .into(h.db.assetEvents)
+        .insert(
+          AssetEventsCompanion.insert(
+            assetId: fund,
+            date: DateTime(2025, 12, 1),
+            valueDate: DateTime(2025, 12, 1),
+            type: EventType.buy,
+            amount: 1000,
+            quantity: const Value(10),
+            price: const Value(100),
+          ),
+        );
+    for (final (date, close) in [(DateTime(2025, 12, 1), 100.0), (DateTime(2026, 3, 10), 110.0)]) {
+      await h.db.into(h.db.marketPrices).insert(MarketPricesCompanion.insert(assetId: fund, date: date, closePrice: close, currency: 'EUR'));
+    }
+    await h.pump(tester);
     try {
-      for (final kpi in [s.kpiToday, s.kpiYtd, s.kpiAllTime]) {
-        expectNa(kpi);
-        expect(inKpi(kpi, '0.00%'), findsNothing);
-      }
+      expectNa(s.kpiAnnualizedReturn);
+      expect(inKpi(s.kpiAnnualizedReturn, '10.00%'), findsNothing, reason: 'a 10% gain in three months is not a yearly rate');
+      final details = find.descendant(of: h.kpiCard(s.kpiAnnualizedReturn), matching: find.text(s.healthDetails));
+      await tester.ensureVisible(details);
+      await h.settle(tester);
+      await tester.tap(details);
+      await h.settle(tester);
+      expect(inKpi(s.kpiAnnualizedReturn, s.kpiAnnualizedReturnNeedsYear), findsOneWidget);
     } finally {
       await h.unmount(tester);
     }
@@ -81,14 +125,24 @@ void main() {
     await seedCashOnly();
     await h.pump(tester);
     try {
-      for (final kpi in [s.kpiSavingsRate, s.kpiExpenseCoverage, s.kpiIncomeToWealth, s.hhiLabel, s.kpiFireProgress]) {
+      for (final kpi in [
+        s.kpiSavingsRate,
+        s.kpiExpenseCoverage,
+        s.kpiIncomeToWealth,
+        s.kpiLargestPosition,
+        s.kpiAnnualizedReturn,
+        s.kpiFireNumber,
+        s.kpiCreditLineUsage,
+      ]) {
         expectNa(kpi);
       }
       expect(inKpi(s.kpiExpenseCoverage, '0${s.kpiUnitMonths}'), findsNothing, reason: 'no expenses is not 0 months of coverage');
-      expect(inKpi(s.hhiLabel, '0'), findsNothing, reason: 'no holdings is not a perfectly diversified portfolio');
-      // All of it is cash: the liquidity ratio is known.
+      expect(inKpi(s.kpiLargestPosition, '0.00%'), findsNothing, reason: 'no holdings is not a perfectly diversified portfolio');
+      // All of it is cash: the liquidity ratio is known, and nothing is owed.
       expect(inKpi(s.kpiLiquidityRatio, '100.00%'), findsOneWidget);
       expect(inKpi(s.kpiLiquidityRatio, s.ratingOttimo), findsOneWidget);
+      expect(inKpi(s.kpiDebtToAssets, '0.00%'), findsOneWidget);
+      expect(inKpi(s.kpiDebtToAssets, s.ratingOttimo), findsOneWidget);
     } finally {
       await h.unmount(tester);
     }
@@ -102,6 +156,7 @@ void main() {
       expect(find.descendant(of: summary, matching: find.text(s.ratingScarso)), findsNothing);
       expectNa(s.kpiLiquidityRatio);
       expectNa(s.kpiInvestmentWeight);
+      expectNa(s.kpiDebtToAssets);
     } finally {
       await h.unmount(tester);
     }

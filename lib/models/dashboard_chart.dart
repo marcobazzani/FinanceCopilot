@@ -4,7 +4,8 @@
 class DashboardChart {
   final int id;
   final String title;
-  final String widgetType; // 'price_changes' | 'cash' | 'saving' | 'portfolio' | 'liquid_investments' | 'chart'
+  final String
+  widgetType; // 'price_changes' | 'cash' | 'saving' | 'portfolio' | 'liquid_investments' | 'net_asset_value' | 'total_assets' | 'chart'
   final int sortOrder;
   final String seriesJson; // JSON array of {type, id, sign?}
   final String? sourceChartIds; // '*' | JSON list of int ids | JSON list of titles

@@ -11,7 +11,7 @@
       "sourceChartIds": "[\"Total Assets\",\"Saving\",\"Invested\",\"Cash\",\"Portfolio\",\"Net Asset Value\"]"
     },
     {
-      "widgetType": "chart",
+      "role": "total_assets",
       "title": "Total Assets",
       "categories": [
         "all_market",

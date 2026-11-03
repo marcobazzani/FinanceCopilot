@@ -95,10 +95,12 @@ void main() {
           );
       await h.pump(tester, isPrivate: true);
       try {
-        // Health: under the summary, and under each price-change KPI.
+        // Health: under the summary, and under the yearly return, which leaves
+        // the unpriced asset out. No price-change KPI is left to carry one.
         expectFootnotes(find.text(s.unpricedExcludedFromTotals(1)), count: 1);
         expectFootnotes(find.text(s.incomeFxExcluded(1)), count: 1);
-        expectFootnotes(find.text(s.unpricedExcludedFromTotal(1)), count: 3);
+        expectFootnotes(find.text(s.pillarPerformanceExcluded(1)), count: 1);
+        expect(find.text(s.unpricedExcludedFromTotal(1)), findsNothing);
 
         // History: under the Totals table, the Price Changes total and the
         // header total of the charts adding the unpriced asset up.

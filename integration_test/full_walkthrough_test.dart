@@ -1777,11 +1777,11 @@ void main() {
       await longSettle(tester);
       await scrollAndExpand();
 
-      // 11c.i — FIRE indicator dialog: tap info icon on FIRE Progress KPI,
+      // 11c.i — FIRE indicator dialog: tap info icon on FIRE number KPI,
       // type SWR with locale-aware decimal ('4,25' EU format), verify the
-      // dialog parses + previews FI number, then Save to persist via
+      // dialog parses + previews the FIRE number, then Save to persist via
       // app_configs (FIRE_SWR key).
-      final fireKpi = find.text('FIRE Progress');
+      final fireKpi = find.text('FIRE number');
       if (fireKpi.evaluate().isNotEmpty) {
         // Scroll FIRE card into view, then tap its info_outline icon.
         final dashScroll = find.byType(Scrollable);
@@ -1795,7 +1795,7 @@ void main() {
             );
           } catch (_) {}
         }
-        // The info icon sits in the same card as the FIRE Progress label.
+        // The info icon sits in the same card as the FIRE number label.
         final card = find.ancestor(of: fireKpi.first, matching: find.byType(Card));
         if (card.evaluate().isNotEmpty) {
           final infoIcon = find.descendant(

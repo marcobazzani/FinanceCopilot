@@ -34,7 +34,7 @@ Most personal-finance apps either lock you to a specific bank, ship your transac
 ## Screenshots
 
 ### Financial Health
-KPI scoring across **Liquidity**, **Wealth**, and **Performance & Diversification**, with a single overall gauge. Each indicator opens a popover with the formula and the actual numbers behind it.
+KPI scoring across **Liquidity**, **Financial & Wealth**, **Debt**, and **Performance & Diversification**, with a single overall gauge (the mean of the categories, so each weighs the same). Each indicator opens a popover with the formula and the actual numbers behind it.
 
 | Desktop | Mobile |
 |---|---|
@@ -110,7 +110,7 @@ Map any bank or broker CSV / Excel / PDF onto Transactions, Asset Events, or Inc
 - TER and composition auto-fetched for ETFs
 
 ### Dashboards
-- **Financial Health** — KPI scoring with Liquidity, Wealth, and Performance & Diversification categories (Net Worth Ratio, Expense Coverage, Savings Rate, Investment Weight, Liquid Asset Ratio, Income-to-Wealth, HHI, weighted TER, …)
+- **Financial Health** — KPI scoring with Liquidity, Financial & Wealth, Debt, and Performance & Diversification categories (Net Worth Liquidity Ratio, Expense Coverage, Savings Rate, Investment Weight, Liquid Asset Ratio, Income-to-Wealth, FIRE number, Debt-to-Assets, Credit-Line Usage, Annualized Return, Largest Position, weighted TER). Credit lines are never counted as wealth or cash
 - **History** — combined chart, top movers, smart Totals, plus global historical Wayback controls
 - **Cash Flow** — saving / spending / velocity with configurable MA windows
 - **Allocation** — six donuts + drill-down + concentration metrics (Top 1/3/5, HHI)

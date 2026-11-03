@@ -55,12 +55,15 @@ void main() {
       }
     });
 
-    testWidgets('HHI and TER formulas are Italian', (tester) async {
+    testWidgets('TER and Largest Position formulas are Italian', (tester) async {
       await h.seed();
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
-        await h.openInfo(tester, 'HHI');
-        expect(h.dialogText(tester), contains('Indice di Herfindahl-Hirschman\n< 1500 = Ben diversificato'));
+        await h.openInfo(tester, 'Posizione maggiore');
+        expect(
+          h.dialogText(tester),
+          contains('Maggiore azione o cripto / Valore del portafoglio x 100\nNessuna azione o cripto in portafoglio'),
+        );
         await h.tapDialogButton(tester, 'Chiudi');
 
         await h.openInfo(tester, 'TER');
@@ -75,7 +78,7 @@ void main() {
       await h.seed();
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
-        await h.openInfo(tester, 'Progresso verso target FI');
+        await h.openInfo(tester, 'Numero FIRE');
         expect(find.text('  Proiezione anno corrente (2 mesi)'), findsOneWidget);
         await h.tapDialogButton(tester, 'Annulla');
       } finally {
@@ -88,13 +91,13 @@ void main() {
     await h.seed();
     await h.pump(tester);
     try {
-      await h.openInfo(tester, 'HHI');
-      expect(h.dialogText(tester), contains('Herfindahl-Hirschman Index\n< 1500 = Well diversified'));
+      await h.openInfo(tester, 'Largest Position');
+      expect(h.dialogText(tester), contains('Largest Stock or Crypto / Portfolio value x 100\nNo single stock or crypto held'));
       await h.tapDialogButton(tester, 'Close');
       await h.openInfo(tester, 'TER');
       expect(h.dialogText(tester), contains('Weighted Avg TER\n0.20%'));
       await h.tapDialogButton(tester, 'Close');
-      await h.openInfo(tester, 'FI Target Progress');
+      await h.openInfo(tester, 'FIRE number');
       expect(find.text('  Current-year projection (2m)'), findsOneWidget);
       await h.tapDialogButton(tester, 'Cancel');
     } finally {
@@ -112,7 +115,7 @@ void main() {
       await h.seed();
       await h.pump(tester);
       try {
-        await h.openInfo(tester, 'FI Target Progress');
+        await h.openInfo(tester, 'FIRE number');
         await tester.enterText(swrField(), '3');
         await h.tapDialogButton(tester, 'Cancel');
         expect(find.byType(AlertDialog), findsNothing);
@@ -127,7 +130,7 @@ void main() {
       await h.seed();
       await h.pump(tester);
       try {
-        await h.openInfo(tester, 'FI Target Progress');
+        await h.openInfo(tester, 'FIRE number');
         await tester.enterText(swrField(), '3');
         await h.tapDialogButton(tester, 'Save');
         expect(find.byType(AlertDialog), findsNothing);
@@ -142,7 +145,7 @@ void main() {
       await h.seed();
       await h.pump(tester);
       try {
-        await h.openInfo(tester, 'FI Target Progress');
+        await h.openInfo(tester, 'FIRE number');
         await tester.enterText(swrField(), '3');
         await h.tapDialogButton(tester, 'Reset default');
         expect(find.byType(AlertDialog), findsOneWidget);

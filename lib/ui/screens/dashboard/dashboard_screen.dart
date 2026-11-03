@@ -38,6 +38,8 @@ import 'package:finance_copilot/services/domain/asset_event_service.dart' show A
 import 'package:finance_copilot/services/domain/asset_service.dart' show AssetStats;
 import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/pillars/financial_health_service.dart';
+import 'package:finance_copilot/services/pillars/health_balance_sheet.dart';
+import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/services/portfolio/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/ath_celebration_overlay.dart';
@@ -105,6 +107,15 @@ class ChartRoles {
     AllSeriesData allData,
     List<Asset> activeAssets,
   ) => _DashboardScreenState.assetIdsForRoleTotal(role, charts, allData, activeAssets);
+
+  /// The series a role's chart is made of (its fallback composition when the
+  /// chart is missing), before they are folded into a total.
+  static List<ChartSeries> seriesForRole(
+    String role,
+    List<DashboardChart> charts,
+    AllSeriesData allData,
+    List<Asset> activeAssets,
+  ) => _DashboardScreenState._seriesForRole(role, charts, allData, activeAssets);
 
   static double valueForRole(
     String role,
@@ -924,6 +935,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
       ],
       'portfolio' => allData.assetMarket,
       'liquid_investments' => _liquidAssetMarket(allData, activeAssets),
+      'total_assets' => [
+        ...allData.accounts,
+        ...allData.assetMarket,
+        ...allData.adjustments,
+      ],
       'net_asset_value' => [
         ...allData.accounts,
         ...allData.assetNet,

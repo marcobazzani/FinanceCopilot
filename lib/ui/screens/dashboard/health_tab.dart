@@ -1,11 +1,12 @@
 part of 'dashboard_screen.dart';
 
 // ════════════════════════════════════════════════════
-// Financial Health Tab — KPIs + Investment Costs
+// Financial Health Tab — KPIs
 // ════════════════════════════════════════════════════
 
-// KPI computation logic lives in lib/services/financial_health_service.dart
-// (Rating, HealthKpi, KpiCategory, rateNormal, categoryRating, computeKpis)
+// KPI computation logic lives in lib/services/pillars/financial_health_service.dart
+// (ratings, scores, the KPIs themselves) and the balances they are built from
+// in health_balance_sheet.dart.
 
 // ── Main widget ──
 
@@ -25,15 +26,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final incomeRowsWithoutRate = ref.watch(incomeRowsWithoutRateProvider).value;
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final swrPct = ref.watch(fireSwrProvider).value ?? kDefaultFireSwrPct;
-
-    // Price changes for Today, YTD, All — use midnight dates to match History
-    // tab. Yesterday is one calendar day back: 24 hours before a local
-    // midnight is 23:00 two days before (or 01:00) around a daylight-saving
-    // change.
     final today = ref.watch(currentDateProvider);
-    final todayChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, today.month, today.day - 1)));
-    final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
-    final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final pctFmt = NumberFormat('0.00', locale);
 
     // Wait for every input before rendering: a KPI computed from an input
@@ -53,77 +46,48 @@ class _FinancialHealthTab extends ConsumerWidget {
         final marketValues = marketValuesAsync.value ?? {};
         final stats = statsAsync.value ?? const {};
         final ieData = ieAsync.value;
-
-        // Cash / Portfolio / Liquid Investments flow from the user's
-        // configured History-tab charts (option B). Each falls back to the
-        // hard-coded composition when the role chart is missing.
         final allData = allDataAsync.value;
         final userCharts = ref.watch(dashboardChartsProvider);
         final activeAssets = assets;
-        final cash = allData == null ? 0.0 : _DashboardScreenState.valueForRole('cash', userCharts, allData, activeAssets);
-        final investments = allData == null ? 0.0 : _DashboardScreenState.valueForRole('portfolio', userCharts, allData, activeAssets);
-        final liquidInvestments = allData == null
-            ? 0.0
-            : _DashboardScreenState.valueForRole('liquid_investments', userCharts, allData, activeAssets);
-        // After-tax Net Asset Value — drives the FIRE indicator.
-        final netAssetValue = allData == null ? 0.0 : _DashboardScreenState.valueForRole('net_asset_value', userCharts, allData, activeAssets);
 
-        // Current year for savings/expenses. Rolling 12m for income-to-wealth.
-        double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
-        double rollingIncome = 0;
+        // The balances every ratio is built from. They flow from the user's
+        // configured History-tab charts (Total Assets, Portfolio, Liquid
+        // Investments, Net Asset Value), each falling back to its hard-coded
+        // composition when the role chart is missing. Null: no balance and no
+        // holding has a value.
+        final sheet = allData == null ? null : computeHealthBalanceSheet(charts: userCharts, allData: allData, activeAssets: activeAssets);
+
+        // The current year for savings. The monthly expenses of the coverage and
+        // the FIRE number share one yearly estimate: the current calendar year is
+        // not consolidated, so it is smoothed as avg(EoY projection, full last
+        // year). With no prior year the FIRE number is N/A — using YTD-only
+        // would understate expenses and overstate FIRE progress — and the
+        // coverage falls back to the average of this year, saying so.
+        var annualIncome = 0.0, annualSavings = 0.0, thisYearMonthlyExpenses = 0.0;
+        SmoothedAnnualExpenses? smoothed;
         if (ieData != null && ieData.years.isNotEmpty) {
-          final currentYear = ieData.years.last;
-          annualIncome = currentYear.income;
-          annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
-          annualSavings = currentYear.savings;
-          monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
-          // Rolling 12 months income for income-to-wealth ratio
-          final cutoff = DateTime(today.year - 1, today.month, today.day);
-          for (final year in ieData.years) {
-            for (final month in year.months) {
-              if (DateTime(month.year, month.month).isAfter(cutoff)) {
-                rollingIncome += month.income;
-              }
-            }
-          }
+          final current = ieData.years.last;
+          final prev = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : null;
+          annualIncome = current.income;
+          annualSavings = current.savings;
+          thisYearMonthlyExpenses = current.monthlyExpenses > 0 ? current.monthlyExpenses : 0;
+          smoothed = estimateSmoothedAnnualExpenses(
+            current: _toEoyYear(current),
+            prev: prev == null ? null : _toEoyYear(prev),
+          );
         }
+        final rollingIncome = ieData == null ? 0.0 : incomeOverLastYear(ieData.incomeRecords, today);
 
         var categories = computeKpis(
-          cash: cash,
-          investments: investments,
-          liquidInvestments: liquidInvestments,
+          sheet: sheet,
           annualIncome: annualIncome,
-          rollingIncome: rollingIncome,
-          annualExpenses: annualExpenses,
           annualSavings: annualSavings,
-          monthlyExpenses: monthlyExpenses,
+          rollingIncome: rollingIncome,
+          estimatedAnnualExpenses: smoothed?.value,
+          thisYearMonthlyExpenses: thisYearMonthlyExpenses,
           s: s,
           locale: locale,
         );
-        // A KPI whose inputs are missing is N/A: computeKpis reads a zero
-        // base as a 0 ratio and rates it, so no balances, no income or no
-        // expenses would come out as a Poor 0% / 0 months. The net worth is
-        // missing when neither the cash nor the portfolio total has a value —
-        // nothing held, or all of it left out for want of a rate.
-        final netWorthRatios = [s.kpiLiquidityRatio, s.kpiInvestmentWeight, s.kpiLiquidAssetRatio, s.kpiIncomeToWealth];
-        final netWorthKnown =
-            allData != null &&
-            ['cash', 'portfolio'].any((role) => _DashboardScreenState.spotsForRole(role, userCharts, allData, activeAssets).isNotEmpty);
-        final missingInputs = <String>{
-          if (!netWorthKnown) ...netWorthRatios,
-          if (allData == null || monthlyExpenses <= 0) s.kpiExpenseCoverage,
-          if (annualIncome <= 0) s.kpiSavingsRate,
-          if (rollingIncome <= 0) s.kpiIncomeToWealth,
-        };
-        // A ratio over a known net worth of zero or less is N/A as well: it
-        // means nothing. Its data is there, so it says that instead.
-        final unavailable = <String, String>{
-          for (final kpi in missingInputs) kpi: s.noData,
-          if (netWorthKnown && cash + investments <= 0)
-            for (final kpi in netWorthRatios)
-              if (!missingInputs.contains(kpi)) kpi: s.kpiNetWorthNotPositive,
-        };
-        categories = [for (final cat in categories) _withUnavailable(cat, unavailable)];
         // What the balances above and the concentration below leave out for
         // want of a price or an exchange rate — never valued at cost, at 0 or
         // converted 1:1 — is counted under the summary, each contributor
@@ -131,7 +95,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         // held assets without a market value today.
         final excluded = [
           if (allData != null)
-            for (final role in const ['cash', 'portfolio', 'liquid_investments', 'net_asset_value'])
+            for (final role in const ['cash', 'total_assets', 'portfolio', 'liquid_investments', 'net_asset_value'])
               totalExclusions(_DashboardScreenState._seriesForRole(role, userCharts, allData, activeAssets), allData),
           TotalExclusions(
             unpricedAssetIds: {
@@ -141,49 +105,22 @@ class _FinancialHealthTab extends ConsumerWidget {
           ),
         ].fold(const TotalExclusions(), (all, next) => all.union(next));
 
-        // ── FIRE KPI: appended to the Wealth category ──
+        // ── FIRE number: appended to the Financial & Wealth category ──
         //
-        // Base = Net Asset Value (after-tax) — driven by the configured
-        // `net_asset_value` role chart or its synthesized fallback.
-        // The current calendar year is not consolidated, so use a smoothed
-        // expense estimate = avg(EoY projection, full last year). When no
-        // prior year is available the KPI is marked N/A — using YTD-only
-        // would understate expenses and overstate FIRE progress. Its info icon
-        // opens the FIRE dialog (see [_showFireDialog]), which spells out the
-        // figures: the KPI carries no formula text of its own.
-        final netWorth = netAssetValue;
-        SmoothedAnnualExpenses? smoothed;
-        if (ieData != null && ieData.years.isNotEmpty) {
-          final cur = ieData.years.last;
-          final prev = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : null;
-          smoothed = estimateSmoothedAnnualExpenses(
-            current: _toEoyYear(cur),
-            prev: prev == null ? null : _toEoyYear(prev),
-          );
-        }
+        // The yearly expenses over the Safe Withdrawal Rate, rated on how much
+        // of it the investable net worth covers. Its info icon opens the FIRE
+        // dialog (see [_showFireDialog]), which spells out the figures.
+        final investableNetWorth = sheet?.investableNetWorth ?? 0;
         final fireExpenses = smoothed?.value ?? 0;
-        final fire = computeFire(
-          netWorth: netWorth,
-          annualExpenses: fireExpenses,
-          swrPct: swrPct,
-        );
-
-        final fireKpi = HealthKpi(
-          name: s.kpiFireProgress,
-          value: fire.insufficientData ? null : fire.progressPct,
-          rating: fire.rating,
-          description: fire.insufficientData ? s.kpiFireInsufficientData() : fireDescription(fire.rating, s),
-        );
+        final fire = computeFire(netWorth: investableNetWorth, annualExpenses: fireExpenses, swrPct: swrPct);
+        final moneyFmt = NumberFormat.decimalPattern(locale);
+        final currency = currencySymbol(allData?.baseCurrency ?? ieData?.baseCurrency ?? '');
+        final fireCard = sheet == null
+            ? HealthKpi(name: s.kpiFireNumber, description: s.noData)
+            : fireKpi(fire: fire, s: s, pctFmt: pctFmt, money: (amount) => '${moneyFmt.format(amount.round())} $currency');
         categories = [
           for (final cat in categories)
-            if (cat.name == s.healthCatWealth)
-              KpiCategory(
-                name: cat.name,
-                kpis: [...cat.kpis, fireKpi],
-                overallRating: categoryRating([...cat.kpis, fireKpi]),
-              )
-            else
-              cat,
+            if (cat.name == s.healthCatWealth) KpiCategory(name: cat.name, kpis: [...cat.kpis, fireCard]) else cat,
         ];
 
         // Augment the Savings Rate KPI's info dialog with an EoY projection.
@@ -228,44 +165,29 @@ class _FinancialHealthTab extends ConsumerWidget {
                   formulaRich: rich,
                 );
               }).toList();
-              return KpiCategory(name: cat.name, kpis: newKpis, overallRating: cat.overallRating);
+              return KpiCategory(name: cat.name, kpis: newKpis);
             }).toList();
           }
         }
 
-        // Build Performance & Diversification category
-        // What a price-change KPI left out, by KPI name: shown under it.
+        // ── Performance & Diversification ──
+        // What a KPI left out, by KPI name: shown under it.
         final footnotes = <String, String>{};
-        HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
-          final data = changes.value;
-          // Held assets without a price (today or at the reference date) or an
-          // exchange rate are not in the change: counted under it, as the
-          // Price Changes card counts them under its total.
-          final unlisted = data == null ? 0 : _unlistedHeldAssets(activeAssets, stats, data);
-          if (unlisted > 0) footnotes[name] = s.unpricedExcludedFromTotal(unlisted);
-          // No price data: no value and no rating, not a 0.00% change.
-          if (data == null || data.isEmpty) return HealthKpi(name: name, description: s.noData);
-          final pairs = data
-              .map(
-                (c) => (
-                  c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
-                  c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
-                ),
-              )
-              .toList();
-          final pct = computePriceChangePct(pairs);
-          return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
-        }
 
-        // A position without a market value is left out (counted under the
-        // summary, see [excluded]), never weighed as worth 0.
-        final byPosition = <String, double>{};
-        for (final asset in activeAssets) {
-          final mv = marketValues[asset.id];
-          if (mv != null && mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
+        // Every asset but the liabilities: a debt is not an investment.
+        final performance = allData == null
+            ? null
+            : computePillarPerformanceSnapshot(
+                asOfDate: today,
+                allData: allData,
+                fractions: {
+                  for (final asset in activeAssets)
+                    if (asset.instrumentType != InstrumentType.liability) asset.id: 1.0,
+                },
+              );
+        if (performance != null && performance.excludedAssetCount > 0) {
+          footnotes[s.kpiAnnualizedReturn] = s.pillarPerformanceExcluded(performance.excludedAssetCount);
         }
-        final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
-        final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
 
         // Funds without a TER on record are left out and counted (see
         // computeWeightedTer); nothing to weigh leaves the KPI unrated.
@@ -273,18 +195,10 @@ class _FinancialHealthTab extends ConsumerWidget {
         final ter = weightedTer.ter;
 
         final perfKpis = [
-          changeKpi(s.kpiToday, todayChanges),
-          changeKpi(s.kpiYtd, ytdChanges),
-          changeKpi(s.kpiAllTime, allChanges),
-          // No valued holding: no concentration to measure, not an HHI of 0
-          // rated as perfectly diversified.
-          HealthKpi(
-            name: s.hhiLabel,
-            value: byPosition.isEmpty ? null : conc.hhi,
-            unit: '',
-            rating: byPosition.isEmpty ? Rating.na : rateHhi(conc.hhi),
-            formula: '${s.hhiFullName}\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}',
-          ),
+          annualizedReturnKpi(snapshot: performance, s: s, locale: locale),
+          // A position without a market value is left out (counted under the
+          // summary, see [excluded]), never weighed as worth 0.
+          largestPositionKpi(position: computeLargestPosition(activeAssets, marketValues), s: s, locale: locale),
           HealthKpi(
             name: s.healthTer,
             value: ter,
@@ -295,28 +209,15 @@ class _FinancialHealthTab extends ConsumerWidget {
               ter == null ? '-' : '${pctFmt.format(ter)}%',
               if (weightedTer.unknownTerFunds > 0) s.terUnknownExcluded(weightedTer.unknownTerFunds),
             ].join('\n'),
+            formulaFiguresPrivate: false,
           ),
         ];
-        final perfCategory = KpiCategory(
-          name: s.healthPerformance,
-          kpis: perfKpis,
-          overallRating: categoryRating(perfKpis),
-        );
+        final perfCategory = KpiCategory(name: s.healthPerformance, kpis: perfKpis);
         final allCategories = [...categories, perfCategory];
 
-        // Overall score includes all categories; nothing rated, no score.
-        final allKpis = allCategories.expand((c) => c.kpis).toList();
-        final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
-        final overallScore = ratedKpis.isEmpty ? null : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
-        final overallRating = overallScore == null
-            ? Rating.na
-            : overallScore >= 87
-            ? Rating.ottimo
-            : overallScore >= 62
-            ? Rating.buono
-            : overallScore >= 37
-            ? Rating.sufficiente
-            : Rating.scarso;
+        // The score is the mean of the categories, so each weighs the same;
+        // nothing rated, no score.
+        final overall = overallHealth(allCategories);
 
         return MobilePullToRefresh(
           child: SingleChildScrollView(
@@ -327,8 +228,8 @@ class _FinancialHealthTab extends ConsumerWidget {
               children: [
                 // ── Summary row ──
                 _SummarySection(
-                  score: overallScore,
-                  overallRating: overallRating,
+                  score: overall.score,
+                  overallRating: overall.rating,
                   categories: allCategories,
                   s: s,
                 ),
@@ -360,16 +261,12 @@ class _FinancialHealthTab extends ConsumerWidget {
                               pctFmt: pctFmt,
                               s: s,
                               footnote: footnotes[kpi.name],
-                              // Liquidity and Wealth formulas plug in cash, income,
-                              // expenses and net worth; the Performance ones only
-                              // percentages and index thresholds.
-                              formulaFiguresArePrivate: cat != perfCategory,
-                              onInfoTap: kpi.name == s.kpiFireProgress
+                              onInfoTap: kpi.name == s.kpiFireNumber
                                   ? () => _showFireDialog(
                                       context: context,
                                       s: s,
                                       locale: locale,
-                                      netWorth: netWorth,
+                                      netWorth: investableNetWorth,
                                       annualExpenses: fireExpenses,
                                       smoothed: smoothed,
                                       currentSwr: swrPct,
@@ -413,28 +310,6 @@ class _FinancialHealthTab extends ConsumerWidget {
     );
   }
 }
-
-/// [cat] with the KPIs named in [unavailable] made N/A, each saying why with
-/// the description it is mapped to (see [_naKpi]), and its rating taken over
-/// the rest.
-KpiCategory _withUnavailable(KpiCategory cat, Map<String, String> unavailable) {
-  if (!cat.kpis.any((k) => unavailable.containsKey(k.name))) return cat;
-  final kpis = [
-    for (final k in cat.kpis)
-      if (unavailable[k.name] case final why?) _naKpi(k, why) else k,
-  ];
-  return KpiCategory(name: cat.name, kpis: kpis, overallRating: categoryRating(kpis));
-}
-
-/// [kpi] that cannot be computed, for the reason [description] gives: no
-/// value ("-"), no rating, and only the symbolic first line of its formula —
-/// no placeholder figures.
-HealthKpi _naKpi(HealthKpi kpi, String description) => HealthKpi(
-  name: kpi.name,
-  unit: kpi.unit,
-  description: description,
-  formula: kpi.formula.split('\n').first,
-);
 
 // ── Summary section ──
 
@@ -575,10 +450,6 @@ class _KpiCard extends StatefulWidget {
   /// formula dialog is bypassed.
   final VoidCallback? onInfoTap;
 
-  /// The figures plugged into the formula are position size, masked in
-  /// privacy mode. False when they are only percentages or thresholds.
-  final bool formulaFiguresArePrivate;
-
   /// What the value leaves out (e.g. the assets without a price), shown
   /// under the KPI name.
   final String? footnote;
@@ -588,7 +459,6 @@ class _KpiCard extends StatefulWidget {
     required this.pctFmt,
     required this.s,
     this.onInfoTap,
-    this.formulaFiguresArePrivate = true,
     this.footnote,
   });
 
@@ -605,6 +475,7 @@ class _KpiCardState extends State<_KpiCard> {
     final theme = Theme.of(context);
 
     final valueText = kpi.value != null ? (kpi.unit == '%' ? '${widget.pctFmt.format(kpi.value!)}%' : '${kpi.value!.round()}${kpi.unit}') : '-';
+    const valueStyle = TextStyle(fontSize: 28, fontWeight: FontWeight.bold);
 
     return Card(
       child: Padding(
@@ -617,10 +488,9 @@ class _KpiCardState extends State<_KpiCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    valueText,
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
+                  // An amount of money is position size; a percentage, a count
+                  // of months or an index is not.
+                  child: kpi.amountLabel != null ? PrivacyText(kpi.amountLabel!, style: valueStyle) : Text(valueText, style: valueStyle),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -639,6 +509,7 @@ class _KpiCardState extends State<_KpiCard> {
             const SizedBox(height: 4),
             // KPI name
             Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+            if (kpi.subtitle case final subtitle?) Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
             if (widget.footnote case final footnote?) ...[
               const SizedBox(height: 2),
               Footnote(footnote),
@@ -676,7 +547,7 @@ class _KpiCardState extends State<_KpiCard> {
                           content: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 480),
                             child: SingleChildScrollView(
-                              child: _KpiFormula(kpi: kpi, style: baseStyle, figuresArePrivate: widget.formulaFiguresArePrivate),
+                              child: _KpiFormula(kpi: kpi, style: baseStyle, figuresArePrivate: kpi.formulaFiguresPrivate),
                             ),
                           ),
                           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.s.close))],
@@ -1005,6 +876,10 @@ class _FireDialogState extends ConsumerState<_FireDialog> {
                 ],
                 const SizedBox(height: 8),
                 _FireDialogRow(label: s.fireNumberLabel, value: amtFmt.format(preview.fiNumber)),
+                const SizedBox(height: 4),
+                _FireDialogRow(label: s.fireAssetsLabel, value: amtFmt.format(widget.netWorth)),
+                const SizedBox(height: 4),
+                _FireDialogRow(label: s.fireGapLabel, value: amtFmt.format(max(0.0, preview.fiNumber - widget.netWorth))),
                 const SizedBox(height: 4),
                 _FireDialogRow(
                   label: s.fireProgressLabel,

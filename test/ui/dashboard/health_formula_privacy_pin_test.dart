@@ -215,9 +215,10 @@ void main() {
 
       // A plain formula: the figures below the symbolic line blur as one block.
       await h.openInfo(tester, s.kpiLiquidityRatio);
-      expect(h.dialogText(tester), 'Net Worth Liquidity Ratio\nCash / Net Worth x 100\n14,500 / 14,500 x 100\nClose');
+      const figures = '14,500 / 14,500 x 100\nCash = Accounts + Money Market: 14,500 + 0\nNet Worth = Total Assets chart';
+      expect(h.dialogText(tester), 'Net Worth Liquidity Ratio\nCash / Net Worth x 100\n$figures\nClose');
       expect(selectableTexts(tester), ['Cash / Net Worth x 100']);
-      expect(masked(inDialog(find.text('14,500 / 14,500 x 100'))), isTrue);
+      expect(masked(inDialog(find.text(figures))), isTrue);
       expect(masked(inDialog(find.text('Cash / Net Worth x 100'))), isFalse);
       await h.tapDialogButton(tester, s.close);
     } finally {
