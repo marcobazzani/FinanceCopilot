@@ -7,7 +7,23 @@ class _MonthlyGrid extends ConsumerWidget {
   final String field; // 'income' or 'expenses'
   const _MonthlyGrid({required this.data, required this.locale, required this.language, required this.field});
 
-  CashFlowField get _explainField => field == 'income' ? CashFlowField.income : CashFlowField.expenses;
+  CashFlowField get _explainField => switch (field) {
+    'income' => CashFlowField.income,
+    'savings' => CashFlowField.savings,
+    _ => CashFlowField.expenses,
+  };
+
+  double _monthValue(_MonthBucket mb) => switch (field) {
+    'income' => mb.income,
+    'savings' => mb.savings,
+    _ => mb.expenses,
+  };
+
+  double _yearValue(_YearBucket y) => switch (field) {
+    'income' => y.income,
+    'savings' => y.savings,
+    _ => y.expenses,
+  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,7 +45,7 @@ class _MonthlyGrid extends ConsumerWidget {
 
     double value(_YearBucket y, int m) {
       final mb = y.months.where((b) => b.month == m).firstOrNull;
-      return mb == null ? double.nan : (field == 'income' ? mb.income : mb.expenses);
+      return mb == null ? double.nan : _monthValue(mb);
     }
 
     return SingleChildScrollView(
@@ -92,7 +108,7 @@ class _MonthlyGrid extends ConsumerWidget {
               for (final y in years) ...[
                 Builder(
                   builder: (ctx) {
-                    final v = field == 'income' ? y.income : y.expenses;
+                    final v = _yearValue(y);
                     return _tdPrivacy(
                       '${amtFmt.format(v)} $sym',
                       dimmed: y.year == now.year,

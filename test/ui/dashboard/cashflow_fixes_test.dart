@@ -1,6 +1,7 @@
 // Cash Flow tab:
-//  * Yearly Summary: a year without income has no savings rate — "—", as the
-//    Sankey leaves the rate out and the Health tab reads N/A — never "+0.0%";
+//  * Year by year, as a table: a year without income has no savings rate —
+//    "—", as the Sankey leaves the rate out and the Health tab reads N/A —
+//    never "+0.0%";
 //  * the month names of the monthly tables and charts, pinned before their
 //    four copies of the month-name helper were folded into one;
 //  * privacy mode blurs the value-axis amounts of the yearly and monthly
@@ -32,16 +33,6 @@ void main() {
 
   bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
 
-  Future<void> expand(WidgetTester tester, String title) async {
-    final tile = find.text(title);
-    await tester.ensureVisible(tile);
-    await h.settle(tester);
-    await tester.tap(tile);
-    await h.settle(tester);
-  }
-
-  Finder section(String title) => find.ancestor(of: find.text(title), matching: find.byType(ExpansionTile)).first;
-
   /// The texts of [section] in tree order.
   List<String> textsIn(WidgetTester tester, Finder section) => [
     for (final t in tester.widgetList<Text>(find.descendant(of: section, matching: find.byType(Text)))) t.data ?? '',
@@ -65,13 +56,13 @@ void main() {
         );
   }
 
-  testWidgets('Yearly Summary: a year without income reads "—" in the rate column, a year with income keeps its rate', (tester) async {
+  testWidgets('Year by year table: a year without income reads "—" in the rate column, a year with income keeps its rate', (tester) async {
     await h.seed(); // tracking opens in December 2024; the salary starts in 2025
     await depositIn2025();
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Yearly Summary');
+      await h.cashFlowSection(tester, 'cfYearByYearTile', pick: [AppStrings.en.cfViewTable]);
       final table = find.byType(DataTable);
 
       /// The texts laid out on the row of [year].
@@ -93,34 +84,20 @@ void main() {
   });
 
   group('month names', () {
-    for (final (language, locale, tab, incomeTable, yoy, incomeChart, months) in [
-      (
-        'en',
-        'en_US',
-        'Cash Flow',
-        'Monthly Income by Year (table)',
-        'YoY Income Changes',
-        'Income by Month (per Year)',
-        const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-      ),
-      (
-        'it',
-        'it_IT',
-        'Flussi di cassa',
-        'Entrate Mensili per Anno (tabella)',
-        'Variazione YoY Entrate',
-        'Entrate per Mese (per Anno)',
-        const ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'],
-      ),
+    for (final (language, locale, tab, months) in [
+      ('en', 'en_US', 'Cash Flow', const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']),
+      ('it', 'it_IT', 'Flussi di cassa', const ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic']),
     ]) {
       testWidgets('$locale: the monthly table, the YoY table and the monthly chart name the months alike', (tester) async {
+        final s = AppStrings.of(language);
         await h.seed();
         await h.pump(tester, language: language, locale: locale);
         try {
           await h.openTab(tester, tab);
-          for (final title in [incomeTable, yoy, incomeChart]) {
-            await expand(tester, title);
-            expect(textsIn(tester, section(title)).where(months.contains).toList(), months, reason: title);
+          // Month by month, income: as a table, year over year, as a chart.
+          for (final view in [s.cfViewTable, s.cfViewYoY, s.cfViewChart]) {
+            final section = await h.cashFlowSection(tester, 'cfMonthByMonthTile', pick: [view]);
+            expect(textsIn(tester, section).where(months.contains).toList(), months, reason: view);
           }
         } finally {
           await h.unmount(tester);
@@ -131,9 +108,9 @@ void main() {
 
   group('value axis in privacy mode', () {
     /// Amount labels (ending with the currency) and the other labels drawn by
-    /// the first bar chart of [section].
+    /// the first chart of [section].
     ({List<Finder> amounts, List<Finder> others}) axisOf(WidgetTester tester, Finder section) {
-      final chart = find.descendant(of: section, matching: find.byType(BarChart)).first;
+      final chart = find.descendant(of: section, matching: find.byWidgetPredicate((w) => w is BarChart || w is LineChart)).first;
       final amounts = <Finder>[];
       final others = <Finder>[];
       for (final e in find.descendant(of: chart, matching: find.byType(Text)).evaluate()) {
@@ -144,14 +121,13 @@ void main() {
       return (amounts: amounts, others: others);
     }
 
-    for (final (title, label) in [('Income / Expenses / Savings per Year', '2025'), ('Income by Month (per Year)', 'Jun')]) {
+    for (final (title, key, label) in [('Year by year', 'cfYearByYearTile', '2025'), ('Month by month', 'cfMonthByMonthTile', 'Jun')]) {
       testWidgets('$title: the amounts are blurred, "$label" stays readable', (tester) async {
         await h.seed();
         await h.pump(tester, isPrivate: true);
         try {
           await h.openTab(tester, 'Cash Flow');
-          if (title != 'Income / Expenses / Savings per Year') await expand(tester, title);
-          final (:amounts, :others) = axisOf(tester, section(title));
+          final (:amounts, :others) = axisOf(tester, await h.cashFlowSection(tester, key));
           expect(amounts, isNotEmpty, reason: 'the scale is drawn, blurred, not replaced by a placeholder');
           for (final a in amounts) {
             expect(masked(a), isTrue, reason: 'an axis amount is position size');
@@ -171,7 +147,7 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        final (:amounts, others: _) = axisOf(tester, section('Income / Expenses / Savings per Year'));
+        final (:amounts, others: _) = axisOf(tester, await h.cashFlowSection(tester, 'cfYearByYearTile'));
         expect(amounts, isNotEmpty);
         for (final a in amounts) {
           expect(masked(a), isFalse);
@@ -200,7 +176,13 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: CashFlowSankeyCard(spending: spending, years: const {}, currentYear: 2026, locale: 'en_US'),
+              child: CashFlowSankeyCard(
+                spending: spending,
+                periods: const {},
+                totals: (income: 0, savings: 0, refunds: 0),
+                periodLabel: '2026',
+                locale: 'en_US',
+              ),
             ),
           ),
         ),

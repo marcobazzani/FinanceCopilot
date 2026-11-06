@@ -1,10 +1,16 @@
 part of 'dashboard_screen.dart';
 
+/// Month by month, each year minus the year before. [field] is 'income',
+/// 'expenses' or 'savings'. The year before each of [data]'s years is read
+/// from [previous] when given (all years, while [data] holds only the picked
+/// periods), else from [data].
 class _YoYDiffTable extends ConsumerWidget {
   final _IncomeExpenseData data;
+  final _IncomeExpenseData? previous;
   final String locale;
   final String language;
-  const _YoYDiffTable({required this.data, required this.locale, required this.language});
+  final String field;
+  const _YoYDiffTable({required this.data, this.previous, required this.locale, required this.language, this.field = 'income'});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -12,32 +18,69 @@ class _YoYDiffTable extends ConsumerWidget {
     final amtFmt = fmt.amountFormat(locale);
     final theme = Theme.of(context);
     final sym = currencySymbol(data.baseCurrency);
-    final years = data.years;
+    final now = ref.watch(currentDateProvider);
+    final before = {for (final y in (previous ?? data).years) y.year: y};
 
-    if (years.length < 2) {
+    // Pairs: (prevYear, curYear)
+    final pairs = <(_YearBucket, _YearBucket)>[
+      for (final y in data.years)
+        if (before[y.year - 1] case final p?) (p, y),
+    ];
+    if (pairs.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(16),
         child: Text(s.needMoreYears, style: const TextStyle(color: Colors.grey)),
       );
     }
 
-    // Pairs: (prevYear, curYear)
-    final pairs = <(_YearBucket, _YearBucket)>[];
-    for (int i = 1; i < years.length; i++) {
-      pairs.add((years[i - 1], years[i]));
+    double valueOf(_MonthBucket m) => field == 'savings' ? m.savings : m.expenses;
+
+    // A month still in progress is set against the same share of the month a
+    // year before (5/30 of it on 5 November); whole months against whole
+    // months. A month without a bucket on either side has nothing to compare:
+    // a dash, not a difference against zero. Income also needs income records
+    // on both sides.
+    double? diff(_MonthBucket? p, _MonthBucket? c) {
+      if (p == null || c == null) return null;
+      if (field == 'income') {
+        return incomeYoYDiff(
+          previousIncome: p.income * c.share,
+          previousHasIncomeData: p.hasIncomeData,
+          currentIncome: c.income,
+          currentHasIncomeData: c.hasIncomeData,
+        );
+      }
+      return valueOf(c) - valueOf(p) * c.share;
     }
 
-    double? diff(_YearBucket prev, _YearBucket cur, int month) {
-      final p = prev.months.where((m) => m.month == month).firstOrNull;
-      final c = cur.months.where((m) => m.month == month).firstOrNull;
-      if (p == null || c == null) return null;
-      return incomeYoYDiff(
-        previousIncome: p.income,
-        previousHasIncomeData: p.hasIncomeData,
-        currentIncome: c.income,
-        currentHasIncomeData: c.hasIncomeData,
-      );
+    _MonthBucket? monthOf(_YearBucket y, int month) => y.months.where((m) => m.month == month).firstOrNull;
+
+    // Sum of the monthly differences of the months shown in the later year.
+    double? total(_YearBucket prev, _YearBucket cur) {
+      if (field == 'income') {
+        return incomeYoYTotal([
+          for (final c in cur.months)
+            () {
+              final p = monthOf(prev, c.month);
+              return (
+                previousIncome: (p?.income ?? 0) * c.share,
+                previousHasIncomeData: p?.hasIncomeData ?? false,
+                currentIncome: c.income,
+                currentHasIncomeData: c.hasIncomeData,
+              );
+            }(),
+        ]);
+      }
+      double? sum;
+      for (final c in cur.months) {
+        final d = diff(monthOf(prev, c.month), c);
+        if (d != null) sum = (sum ?? 0) + d;
+      }
+      return sum;
     }
+
+    // More expenses than the year before is the bad direction.
+    final upIsGood = field != 'expenses';
 
     final borderSide = BorderSide(color: theme.dividerColor, width: 0.5);
     final tableBorder = TableBorder(
@@ -46,7 +89,7 @@ class _YoYDiffTable extends ConsumerWidget {
       bottom: borderSide,
     );
 
-    Widget diffCell(double? v) {
+    Widget diffCell(double? v, {bool partial = false}) {
       if (v == null) {
         return const Padding(
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -57,8 +100,10 @@ class _YoYDiffTable extends ConsumerWidget {
           ),
         );
       }
-      final color = v >= 0 ? Colors.green.shade700 : Colors.red.shade700;
-      final text = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym';
+      final color = (v >= 0) == upIsGood ? Colors.green.shade700 : Colors.red.shade700;
+      // A month in progress, set against a share of the other: marked, and
+      // said in the footnote.
+      final text = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym${partial ? '*' : ''}';
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: PrivacyText(
@@ -69,7 +114,15 @@ class _YoYDiffTable extends ConsumerWidget {
       );
     }
 
-    return SingleChildScrollView(
+    // The months still in progress, each with the month it is set against.
+    final partial = [
+      for (final (p, c) in pairs)
+        for (final m in c.months)
+          if (m.share < 1 && monthOf(p, m.month) != null) (current: m, base: monthOf(p, m.month)!),
+    ];
+    String monthLabel(_MonthBucket m) => CashFlowPeriod.month(m.year, m.month).label(s, language, now);
+
+    final table = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Table(
@@ -103,7 +156,7 @@ class _YoYDiffTable extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   child: Text(monthAbbr(m, language), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 ),
-                for (final p in pairs) diffCell(diff(p.$1, p.$2, m)),
+                for (final p in pairs) diffCell(diff(monthOf(p.$1, m), monthOf(p.$2, m)), partial: (monthOf(p.$2, m)?.share ?? 1) < 1),
               ],
             ),
           // YoY row: sum of all monthly diffs for months available so far
@@ -114,32 +167,26 @@ class _YoYDiffTable extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 child: Text(s.yoyRowLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ),
-              for (final p in pairs) ...[
-                Builder(
-                  builder: (ctx) {
-                    final maxM = p.$2.months.length;
-                    return diffCell(
-                      incomeYoYTotal([
-                        for (int m = 1; m <= maxM; m++)
-                          () {
-                            final prevMonth = p.$1.months.where((mb) => mb.month == m).firstOrNull;
-                            final curMonth = p.$2.months.where((mb) => mb.month == m).firstOrNull;
-                            return (
-                              previousIncome: prevMonth?.income ?? 0,
-                              previousHasIncomeData: prevMonth?.hasIncomeData ?? false,
-                              currentIncome: curMonth?.income ?? 0,
-                              currentHasIncomeData: curMonth?.hasIncomeData ?? false,
-                            );
-                          }(),
-                      ]),
-                    );
-                  },
-                ),
-              ],
+              for (final p in pairs) diffCell(total(p.$1, p.$2)),
             ],
           ),
         ],
       ),
+    );
+    if (partial.isEmpty) return table;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        table,
+        for (final (:current, :base) in partial)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Footnote(
+              '* ${s.cfPartialMonth(monthLabel(current), current.daysCovered, current.daysInMonth, monthLabel(base))}',
+              key: const Key('yoyPartialMonth'),
+            ),
+          ),
+      ],
     );
   }
 }

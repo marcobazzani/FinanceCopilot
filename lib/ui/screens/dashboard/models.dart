@@ -126,6 +126,16 @@ class _MonthBucket {
   double get expenses => income - personalNavChange;
   double get savings => personalNavChange;
   double get savingsRate => income > 0 ? personalNavChange / income : 0;
+
+  /// The days the figures cover ([from] excluded, [to] included) and the days
+  /// of the month: a month still in progress covers up to today.
+  int get daysCovered => chart_math.calendarDaysBetween(from, to);
+  int get daysInMonth => DateTime(year, month + 1, 0).day;
+
+  /// How much of the month has gone by: 1 once it is over, 5/30 on
+  /// 5 November.
+  double get share => daysCovered / daysInMonth;
+
   const _MonthBucket({
     required this.year,
     required this.month,
@@ -198,6 +208,10 @@ class _IncomeExpenseData {
   final List<ChartSeries> savingSeries;
   final List<ExplainRecord> incomeRecords;
   final List<ExplainRecord> pensionRecords;
+
+  /// The refund Income records, in base currency: inside the savings, not
+  /// income (see [_MonthBucket.refunds]).
+  final List<ExplainRecord> refundRecords;
   const _IncomeExpenseData({
     required this.years,
     required this.baseCurrency,
@@ -207,6 +221,7 @@ class _IncomeExpenseData {
     this.savingSeries = const [],
     this.incomeRecords = const [],
     this.pensionRecords = const [],
+    this.refundRecords = const [],
   });
 }
 

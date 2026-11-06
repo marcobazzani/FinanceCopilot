@@ -135,6 +135,76 @@ class DashboardHarness {
     await settle(tester);
   }
 
+  /// Cash Flow: opens the section [key] (`cfYearByYearTile`,
+  /// `cfMonthByMonthTile`, `cfTrendsTile`) when it is closed, then taps
+  /// [pick] on its segmented controls, in order. Returns the section.
+  Future<Finder> cashFlowSection(WidgetTester tester, String key, {List<String> pick = const []}) async {
+    final tile = find.byKey(Key(key));
+    final controls = find.descendant(of: tile, matching: find.byWidgetPredicate((w) => w is SegmentedButton || w is ChartCard));
+    if (controls.evaluate().isEmpty) {
+      final header = find.descendant(of: tile, matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(header);
+      await settle(tester);
+      await tester.tap(header);
+      await settle(tester);
+    }
+    for (final label in pick) {
+      final segment = find.descendant(of: controls, matching: find.text(label)).first;
+      await tester.ensureVisible(segment);
+      await settle(tester);
+      await tester.tap(segment);
+      await settle(tester);
+    }
+    return tile;
+  }
+
+  /// Cash Flow: picks the year [year] (1Y, then the year on the strip under
+  /// the overview), which every section follows.
+  Future<void> pickYear(WidgetTester tester, int year) async {
+    await tester.tap(find.byKey(const Key('cfSpan:year')));
+    await settle(tester);
+    final entry = find.ancestor(
+      of: find.text('$year'),
+      matching: find.byWidgetPredicate(
+        (w) => w.key is ValueKey<String> && RegExp(r'^cfStrip:\d+$').hasMatch((w.key! as ValueKey<String>).value),
+      ),
+    );
+    await tester.ensureVisible(entry.first);
+    await settle(tester);
+    await tester.tap(entry.first);
+    await settle(tester);
+  }
+
+  /// Cash Flow: picks the month [index] months after the first one of the
+  /// history (1M, then its place on the strip, paging back as needed).
+  Future<void> pickMonthAt(WidgetTester tester, int index) async {
+    await tester.tap(find.byKey(const Key('cfSpan:month')));
+    await settle(tester);
+    final entry = find.byKey(Key('cfStrip:$index'));
+    for (var page = 0; page < 30 && entry.evaluate().isEmpty; page++) {
+      final pageKey = index < _firstOnStrip() ? 'cfStripOlder' : 'cfStripNewer';
+      await tester.ensureVisible(find.byKey(Key(pageKey)));
+      await settle(tester);
+      await tester.tap(find.byKey(Key(pageKey)));
+      await settle(tester);
+    }
+    await tester.ensureVisible(entry);
+    await settle(tester);
+    await tester.tap(entry);
+    await settle(tester);
+  }
+
+  /// The place of the first month the strip names.
+  int _firstOnStrip() => find
+      .byWidgetPredicate((w) => w.key is ValueKey<String> && RegExp(r'^cfStrip:\d+$').hasMatch((w.key! as ValueKey<String>).value))
+      .evaluate()
+      .map((e) => int.parse((e.widget.key! as ValueKey<String>).value.substring('cfStrip:'.length)))
+      .reduce((a, b) => a < b ? a : b);
+
+  /// Cash Flow: what the tab hands "Where the money goes" for the picked
+  /// period — the Income / Savings / refunds of its months.
+  CashFlowTotals sankeyTotals(WidgetTester tester) => tester.widget<CashFlowSankeyCard>(find.byType(CashFlowSankeyCard)).totals;
+
   /// The KPI card showing [kpiName] on the Health tab.
   Finder kpiCard(String kpiName) => find.ancestor(of: find.text(kpiName), matching: find.byType(Card)).first;
 

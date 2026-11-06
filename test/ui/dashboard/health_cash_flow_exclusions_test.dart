@@ -68,6 +68,8 @@ void main() {
         expect(masked(find.text(s.incomeFxExcluded(1))), isFalse, reason: 'a count of records: shape, not magnitude');
         await h.openTab(tester, 'Cash Flow');
         expect(masked(find.text(s.incomeFxExcluded(1))), isFalse);
+        // The Cash Flow tab opens on this month, March 2026, with no income yet: a year with some.
+        await h.pickYear(tester, 2025);
         final sankey = find.byType(CashFlowSankeyCard);
         final income = find.descendant(of: sankey, matching: find.textContaining('€')).first;
         expect(masked(income), isTrue, reason: 'the yearly income is position size');

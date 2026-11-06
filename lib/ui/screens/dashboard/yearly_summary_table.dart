@@ -98,23 +98,24 @@ class _YearlySummaryTable extends ConsumerWidget {
     NumberFormat pctFmt,
     String sym,
     ThemeData theme,
-    void Function(CashFlowField field, double value) explain,
+    void Function(CashFlowField field, double value)? explain,
   ) {
     TextStyle? style = isCurrent ? TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)) : null;
 
     Color savingsColor = y.savings >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+    VoidCallback? tap(CashFlowField field, double value) => explain == null ? null : () => explain(field, value);
 
     return DataRow(
       cells: [
         DataCell(Text(isCurrent ? '${y.year}*' : '${y.year}', style: style?.copyWith(fontWeight: FontWeight.w600))),
-        DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style), onTap: () => explain(CashFlowField.income, y.income)),
-        DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style), onTap: () => explain(CashFlowField.expenses, y.expenses)),
+        DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style), onTap: tap(CashFlowField.income, y.income)),
+        DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style), onTap: tap(CashFlowField.expenses, y.expenses)),
         DataCell(
           PrivacyText(
             '${y.savings >= 0 ? '+' : ''}${amtFmt.format(y.savings)} $sym',
             style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
           ),
-          onTap: () => explain(CashFlowField.savings, y.savings),
+          onTap: tap(CashFlowField.savings, y.savings),
         ),
         // A year without income has no savings rate (the Sankey leaves it
         // out, the Health tab reads N/A): a dash, not a 0% rate.
@@ -133,10 +134,20 @@ class _YearlySummaryTable extends ConsumerWidget {
 }
 
 /// Convert a `_YearBucket` (private to the dashboard library) to the public
-/// `EoyYear` consumed by the EoY projection helper.
+/// `EoyYear` consumed by the EoY projection helper. A month still in progress
+/// carries the days it has had, so the projection counts the previous year's
+/// month for the same share of it.
 EoyYear _toEoyYear(_YearBucket y) => EoyYear(
   year: y.year,
   income: y.income,
   expenses: y.expenses,
-  months: y.months.map((m) => EoyMonth(month: m.month, income: m.income, expenses: m.expenses)).toList(),
+  months: [
+    for (final m in y.months)
+      EoyMonth(
+        month: m.month,
+        income: m.income,
+        expenses: m.expenses,
+        soFar: m.daysCovered < m.daysInMonth ? (days: m.daysCovered, of: m.daysInMonth) : null,
+      ),
+  ],
 );

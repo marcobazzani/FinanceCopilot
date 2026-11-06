@@ -9,7 +9,17 @@ class EoyMonth {
   final int month; // 1-12
   final double income;
   final double expenses;
-  const EoyMonth({required this.month, required this.income, required this.expenses});
+
+  /// The days a month still in progress has had and the days it has (5 of 30
+  /// on 5 November); null once it is over.
+  final ({int days, int of})? soFar;
+  const EoyMonth({required this.month, required this.income, required this.expenses, this.soFar});
+
+  /// How much of the month has gone by: 1 once it is over.
+  double get share => switch (soFar) {
+    (:final days, :final of) => days / of,
+    null => 1,
+  };
 }
 
 /// Year-level totals + per-month breakdown used by the EoY projection.
@@ -33,18 +43,22 @@ class EoyYear {
 /// `prevSame`     — previous year's value over the same Jan..[months] window
 /// `currentTotal` — current year's value over the same Jan..[months] window
 /// `months`       — last month index that actually has data for this metric
+/// `partial`      — that month, when it is still in progress: the previous
+///                  year's month is counted for the same share of it
 class EoyDetails {
   final double value;
   final double prevTotal;
   final double prevSame;
   final double currentTotal;
   final int months;
+  final ({int month, int days, int of})? partial;
   const EoyDetails({
     required this.value,
     required this.prevTotal,
     required this.prevSame,
     required this.currentTotal,
     required this.months,
+    this.partial,
   });
 }
 
@@ -56,6 +70,10 @@ class EoyDetails {
 /// month-end, so summing through the calendar-current month would compare an
 /// empty current month against a fully-paid previous-year month and skew the
 /// projection low.
+///
+/// A month still in progress counts for the share of it gone by: the previous
+/// year's month is taken for the same share (5/30 of it on 5 November), so a
+/// few days are never set against a whole month.
 EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = false}) {
   if (current.months.isEmpty) return null;
 
@@ -71,16 +89,22 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
   if (lastMonth == null || currentTotal == 0) return null;
   final n = lastMonth;
 
-  final prevSame = prev.months.where((m) => m.month <= n).fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
+  final shares = {for (final m in current.months) m.month: m.share};
+  final prevSame = prev.months.where((m) => m.month <= n).fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income) * (shares[m.month] ?? 1));
   if (prevSame == 0) return null;
 
   final prevTotal = expenses ? prev.expenses : prev.income;
+  final last = current.months.where((m) => m.month == n).firstOrNull;
   return EoyDetails(
     value: prevTotal * currentTotal / prevSame,
     prevTotal: prevTotal,
     prevSame: prevSame,
     currentTotal: currentTotal,
     months: n,
+    partial: switch (last?.soFar) {
+      (:final days, :final of) => (month: n, days: days, of: of),
+      null => null,
+    },
   );
 }
 
@@ -247,6 +271,10 @@ TextSpan? buildEoyExplanationSpan({
       const TextSpan(text: '\n  '),
       ...sentence(s.eoyCurrentSoFar(current.year, monthRange, amountMark, prevPct, prev.year), [amount(d.currentTotal)]),
       const TextSpan(text: '\n  '),
+      if (d.partial case (:final month, :final days, :final of))
+        TextSpan(
+          text: '${s.cfPartialMonth('${monthAbbr(month, locale)} ${current.year}', days, of, '${monthAbbr(month, locale)} ${prev.year}')}\n  ',
+        ),
       ...sentence(s.eoyProjection(amountMark), [
         amount(d.prevTotal, bare: true),
         const TextSpan(text: ' × '),

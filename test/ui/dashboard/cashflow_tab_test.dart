@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 
 import 'dashboard_harness.dart';
@@ -37,14 +38,6 @@ void main() {
         );
   }
 
-  Future<void> expand(WidgetTester tester, String title) async {
-    final tile = find.text(title);
-    await tester.ensureVisible(tile);
-    await h.settle(tester);
-    await tester.tap(tile);
-    await h.settle(tester);
-  }
-
   /// Left-axis labels of the yearly Income / Expenses / Savings bar chart.
   List<String> yearlyAxis(WidgetTester tester) => [
     for (final t in tester.widgetList<Text>(find.descendant(of: find.byType(BarChart).first, matching: find.byType(Text))))
@@ -57,6 +50,7 @@ void main() {
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
         await h.openTab(tester, 'Flussi di cassa');
+        await h.cashFlowSection(tester, 'cfTrendsTile');
         expect(find.text('Risparmi vs MM'), findsOneWidget);
         expect(find.text('Uscite vs MM e Liquidità'), findsOneWidget);
         expect(find.text('Velocità (MM)'), findsOneWidget);
@@ -76,6 +70,7 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
+        await h.cashFlowSection(tester, 'cfTrendsTile');
         expect(find.text('Saving vs MA'), findsOneWidget);
         expect(find.text('Expenses vs MA & Cash'), findsOneWidget);
         expect(find.text('Velocity (MA)'), findsOneWidget);
@@ -160,7 +155,7 @@ void main() {
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
         await h.openTab(tester, 'Flussi di cassa');
-        await expand(tester, 'Riepilogo Annuale');
+        await h.cashFlowSection(tester, 'cfYearByYearTile', pick: [AppStrings.it.cfViewTable]);
         expect(find.descendant(of: find.byType(DataTable), matching: find.text('+8,3%')), findsOneWidget);
         expect(find.descendant(of: find.byType(DataTable), matching: find.text('+8.3%')), findsNothing);
       } finally {
@@ -174,7 +169,7 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        await expand(tester, 'Yearly Summary');
+        await h.cashFlowSection(tester, 'cfYearByYearTile', pick: [AppStrings.en.cfViewTable]);
         expect(find.descendant(of: find.byType(DataTable), matching: find.text('+8.3%')), findsOneWidget);
       } finally {
         await h.unmount(tester);

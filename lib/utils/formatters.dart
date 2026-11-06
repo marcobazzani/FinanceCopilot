@@ -63,6 +63,7 @@ String formatYmd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}
 DateFormat shortDateFormat(String locale) => DateFormat.yMd(locale);
 DateFormat monthYearFormat(String locale) => DateFormat.yMMM(locale);
 DateFormat fullDateFormat(String locale) => DateFormat.yMMMd(locale);
+DateFormat dayMonthFormat(String locale) => DateFormat.MMMd(locale);
 
 /// Multi-language month name → month number map.
 /// Used for flexible date parsing in import and paste operations.

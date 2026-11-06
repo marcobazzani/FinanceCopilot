@@ -16,34 +16,21 @@ void main() {
   setUp(h.open);
   tearDown(h.close);
 
-  Future<void> expand(WidgetTester tester, String title) async {
-    final tile = find.text(title);
-    await tester.ensureVisible(tile);
-    await h.settle(tester);
-    await tester.tap(tile);
-    await h.settle(tester);
-  }
-
-  /// The texts drawn by the chart of the section titled [title].
-  List<String?> labelsOf(WidgetTester tester, String title) {
-    final tile = find.ancestor(of: find.text(title), matching: find.byType(ExpansionTile)).first;
-    final chart = find.descendant(of: tile, matching: find.byType(BarChart));
-    return tester.widgetList<Text>(find.descendant(of: chart, matching: find.byType(Text))).map((t) => t.data).toList();
-  }
+  /// The month-by-month chart (income, the section's first view) and the
+  /// texts it draws.
+  Finder chartOf(Finder tile) => find.descendant(of: tile, matching: find.byWidgetPredicate((w) => w is BarChart || w is LineChart));
+  List<String?> labelsOf(WidgetTester tester, Finder tile) =>
+      tester.widgetList<Text>(find.descendant(of: chartOf(tile), matching: find.byType(Text))).map((t) => t.data).toList();
 
   testWidgets('monthly income chart: privacy blurs the value-axis amounts, the months stay readable', (tester) async {
     await h.seed();
     await h.pump(tester, isPrivate: true);
     try {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Income by Month (per Year)');
-      final labels = labelsOf(tester, 'Income by Month (per Year)');
+      final tile = await h.cashFlowSection(tester, 'cfMonthByMonthTile');
+      final labels = labelsOf(tester, tile);
       bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
-      final tile = find.ancestor(of: find.text('Income by Month (per Year)'), matching: find.byType(ExpansionTile)).first;
-      Finder label(String text) => find.descendant(
-        of: find.descendant(of: tile, matching: find.byType(BarChart)),
-        matching: find.text(text),
-      );
+      Finder label(String text) => find.descendant(of: chartOf(tile), matching: find.text(text));
       final amounts = labels.whereType<String>().where((l) => l.endsWith(' €')).toList();
       expect(amounts, isNotEmpty);
       for (final amount in amounts) {
@@ -61,8 +48,7 @@ void main() {
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Income by Month (per Year)');
-      final labels = labelsOf(tester, 'Income by Month (per Year)');
+      final labels = labelsOf(tester, await h.cashFlowSection(tester, 'cfMonthByMonthTile'));
       expect(labels, isNot(contains('\u2022\u2022\u2022\u2022')));
       expect(labels.where((l) => l != null && l.endsWith(' €')), isNotEmpty);
     } finally {

@@ -62,7 +62,13 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: CashFlowSankeyCard(spending: spending, years: years, currentYear: 2025, locale: 'en_US'),
+              child: CashFlowSankeyCard(
+                spending: spending,
+                periods: {for (var m = 1; m <= 12; m++) (2024, m)},
+                totals: years[2024]!,
+                periodLabel: '2024',
+                locale: 'en_US',
+              ),
             ),
           ),
         ),

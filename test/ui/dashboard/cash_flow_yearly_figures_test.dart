@@ -1,6 +1,7 @@
 // The yearly Income / Expense / Savings figures the Cash Flow tab, its Sankey
 // and the Health tab share (read here from the Sankey card, which receives
-// them per year, and from the Saving chart the velocity charts derive from).
+// those of the year picked, and from the Saving chart the velocity charts
+// derive from).
 //
 // - Income records (salaries, refunds, pension contributions) are converted
 //   to base at the rate of their value date; a record whose currency has no
@@ -25,7 +26,10 @@ void main() {
   setUp(h.open);
   tearDown(h.close);
 
-  Map<int, CashFlowYearTotals> yearly(WidgetTester tester) => tester.widget<CashFlowSankeyCard>(find.byType(CashFlowSankeyCard)).years;
+  Future<CashFlowTotals> yearly(WidgetTester tester, int year) async {
+    await h.pickYear(tester, year);
+    return h.sankeyTotals(tester);
+  }
 
   Future<void> income(DateTime day, double amount, {String currency = 'EUR', IncomeType type = IncomeType.income, int? assetId}) => h.db
       .into(h.db.incomes)
@@ -78,17 +82,18 @@ void main() {
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      final years = yearly(tester);
+      final y2025 = await yearly(tester, 2025);
       // 12 × 3,000 + 1,000 USD × 0.8; the 500 CHF is not added at 1:1.
-      expect(years[2025]!.income, 36800);
+      expect(y2025.income, 36800);
       // No balance moved in 2025; the 500 pension contribution is not the
       // user's saving (the CHF one is not subtracted at 1:1 either).
-      expect(years[2025]!.savings, -500);
-      expect(years[2025]!.refunds, 200);
-      expect(years[2026], (income: 6000.0, savings: 0.0, refunds: 0.0));
+      expect(y2025.savings, -500);
+      expect(y2025.refunds, 200);
+      expect(await yearly(tester, 2026), (income: 6000.0, savings: 0.0, refunds: 0.0));
 
       // The Saving chart behind the velocity charts has the cumulative
       // pension contributions taken out from the day they were paid in.
+      await h.cashFlowSection(tester, 'cfTrendsTile');
       final saving = tester.widgetList<ChartCard>(find.byType(ChartCard)).expand((c) => c.series).singleWhere((s) => s.key == 'cf:saving').spots;
       final paidIn = DateTime.utc(2025, 9, 1).difference(DateTime.utc(2024, 12, 1)).inDays;
       expect(saving.where((p) => p.x < paidIn).last.y, 16000);
@@ -128,7 +133,7 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        final y2025 = yearly(tester)[2025]!;
+        final y2025 = await yearly(tester, 2025);
         expect(y2025.income, 3000);
         expect(y2025.savings, 2000, reason: 'from the 10,000 opening to 12,000 — not 12,000 of savings');
         expect(y2025.income - y2025.savings, 1000, reason: 'expenses: the 1,000 spent, not -9,000');
@@ -142,9 +147,8 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        final years = yearly(tester);
-        expect(years[2024], (income: 0.0, savings: 1000.0, refunds: 0.0));
-        expect(years[2025], (income: 36000.0, savings: 0.0, refunds: 0.0), reason: 'later years are unchanged');
+        expect(await yearly(tester, 2024), (income: 0.0, savings: 1000.0, refunds: 0.0));
+        expect(await yearly(tester, 2025), (income: 36000.0, savings: 0.0, refunds: 0.0), reason: 'later years are unchanged');
       } finally {
         await h.unmount(tester);
       }

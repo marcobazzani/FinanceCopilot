@@ -776,9 +776,12 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // Sankey can show it.
   final refundByYear = <int, double>{};
   final refundByMonth = <(int, int), double>{};
-  for (final (dt, amount) in await incomeInBase(
-    "SELECT value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
-  )) {
+  final refundIds = <int>[];
+  final refundRows = await incomeInBase(
+    "SELECT id, value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
+    ids: refundIds,
+  );
+  for (final (dt, amount) in refundRows) {
     refundByYear[dt.year] = (refundByYear[dt.year] ?? 0) + amount;
     refundByMonth[(dt.year, dt.month)] = (refundByMonth[(dt.year, dt.month)] ?? 0) + amount;
   }
@@ -930,6 +933,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     rowsWithoutRate: rowsWithoutRate,
     savingSeries: smartTotalSeries(_DashboardScreenState._seriesForRole('saving', userCharts, allSeriesData, activeAssets)),
     incomeRecords: incomeRecords,
+    refundRecords: [for (final (i, (dt, amount)) in refundRows.indexed) (id: refundIds[i], date: dt, amount: amount)],
     pensionRecords: [for (final (i, (dt, amount)) in pensionRows.indexed) (id: pensionIds[i], date: dt, amount: amount)],
   );
 });

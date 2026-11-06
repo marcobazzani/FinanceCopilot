@@ -87,8 +87,9 @@ void main() {
                   if (d == null) return const SizedBox.shrink();
                   return CashFlowSankeyCard(
                     spending: d,
-                    years: const {2024: (income: 1000, savings: 0, refunds: 0)},
-                    currentYear: 2024,
+                    periods: {for (var m = 1; m <= 12; m++) (2024, m)},
+                    totals: (income: 1000, savings: 0, refunds: 0),
+                    periodLabel: '2024',
                     locale: 'en_US',
                   );
                 },

@@ -159,8 +159,24 @@ CashFlowSankey buildCashFlowSankey({
   double recordedRefunds = 0,
   required SpendingByCategoryData spending,
   required Map<int, Category> categories,
+}) => buildCashFlowSankeyFor(
+  period: spending.period(year, month),
+  income: income,
+  savings: savings,
+  recordedRefunds: recordedRefunds,
+  categories: categories,
+);
+
+/// [buildCashFlowSankey] over any [period] of spending, e.g. several months
+/// summed ([SpendingByCategoryData.sumOfMonths]); [income], [savings] and
+/// [recordedRefunds] are the same periods' figures.
+CashFlowSankey buildCashFlowSankeyFor({
+  required SpendingPeriod period,
+  required double income,
+  required double savings,
+  double recordedRefunds = 0,
+  required Map<int, Category> categories,
 }) {
-  final period = spending.period(year, month);
   final named =
       <MapEntry<int, double>>[
         for (final e in period.byCategory.entries)

@@ -7,11 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/services/classification/category_service.dart';
 
 import 'dashboard_harness.dart';
 
 void main() {
+  const s = AppStrings.en;
   final h = DashboardHarness();
 
   setUpAll(() async => initializeDateFormatting());
@@ -40,15 +42,12 @@ void main() {
         );
   }
 
-  Future<void> expand(WidgetTester tester, String title) async {
-    final tile = find.text(title);
-    await tester.ensureVisible(tile);
-    await h.settle(tester);
-    await tester.tap(tile);
-    await h.settle(tester);
-  }
+  /// Month by month, as the table of [field] (income or expenses).
+  Future<Finder> monthlyTable(WidgetTester tester, String field, {AppStrings strings = s}) =>
+      h.cashFlowSection(tester, 'cfMonthByMonthTile', pick: [field, strings.cfViewTable]);
 
-  Finder section(String title) => find.ancestor(of: find.text(title), matching: find.byType(ExpansionTile)).first;
+  /// Year by year, as its table (the yearly summary).
+  Future<Finder> yearlyTable(WidgetTester tester) => h.cashFlowSection(tester, 'cfYearByYearTile', pick: [s.cfViewTable]);
 
   bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
 
@@ -73,8 +72,7 @@ void main() {
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Monthly Expenses by Year (table)');
-      final grid = section('Monthly Expenses by Year (table)');
+      final grid = await monthlyTable(tester, s.legendExpenses);
       await tapAndWait(tester, find.descendant(of: grid, matching: find.text('-4,000.00 €')).first);
 
       expect(find.byType(AlertDialog), findsOneWidget);
@@ -96,9 +94,8 @@ void main() {
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      for (final title in ['Monthly Income by Year (table)', 'Monthly Expenses by Year (table)']) {
-        await expand(tester, title);
-        final cells = find.descendant(of: section(title), matching: find.byType(Tooltip));
+      for (final title in [s.legendIncome, s.legendExpenses]) {
+        final cells = find.descendant(of: await monthlyTable(tester, title), matching: find.byType(Tooltip));
         final n = cells.evaluate().length;
         expect(n, greaterThan(12), reason: '$title: month cells and the year totals are tappable');
         for (var i = 0; i < n; i++) {
@@ -122,8 +119,7 @@ void main() {
       await h.openTab(tester, 'Cash Flow');
 
       // 2026 income: the January and February records.
-      await expand(tester, 'Monthly Income by Year (table)');
-      await tapAndWait(tester, find.descendant(of: section('Monthly Income by Year (table)'), matching: find.text('6,000.00 €')).first);
+      await tapAndWait(tester, find.descendant(of: await monthlyTable(tester, s.legendIncome), matching: find.text('6,000.00 €')).first);
       var text = h.dialogText(tester);
       expect(text, contains('2026 · Income'));
       expect(text, contains('1/15/2026'));
@@ -132,8 +128,7 @@ void main() {
       await closeDialog(tester);
 
       // 2026 savings: the salary on the account.
-      await expand(tester, 'Yearly Summary');
-      await tapAndWait(tester, find.descendant(of: section('Yearly Summary'), matching: find.text('+4,000.00 €')).first);
+      await tapAndWait(tester, find.descendant(of: await yearlyTable(tester), matching: find.text('+4,000.00 €')).first);
       text = h.dialogText(tester);
       expect(text, contains('2026 · Savings'));
       expect(text, contains('Savings = how much the Saving total grew over the period − pension contributions'));
@@ -148,8 +143,7 @@ void main() {
     await h.pump(tester, isPrivate: true);
     try {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Monthly Expenses by Year (table)');
-      final grid = section('Monthly Expenses by Year (table)');
+      final grid = await monthlyTable(tester, s.legendExpenses);
       // The grid itself is blurred, so find the March 2026 cell by position:
       // the only month cell whose table says -4,000.00 is the one that opens
       // this dialog, so open the cells in turn until it does.
@@ -178,8 +172,7 @@ void main() {
   group('drill-down: every row opens what it is made of', () {
     Future<void> openMarchExpenses(WidgetTester tester) async {
       await h.openTab(tester, 'Cash Flow');
-      await expand(tester, 'Monthly Expenses by Year (table)');
-      await tapAndWait(tester, find.descendant(of: section('Monthly Expenses by Year (table)'), matching: find.text('-4,000.00 €')).first);
+      await tapAndWait(tester, find.descendant(of: await monthlyTable(tester, s.legendExpenses), matching: find.text('-4,000.00 €')).first);
     }
 
     testWidgets('a category row lists exactly its transactions, in the shared sheet', (tester) async {
@@ -217,8 +210,7 @@ void main() {
       await h.pump(tester, isPrivate: true);
       try {
         await h.openTab(tester, 'Cash Flow');
-        await expand(tester, 'Monthly Income by Year (table)');
-        final cells = find.descendant(of: section('Monthly Income by Year (table)'), matching: find.byType(Tooltip));
+        final cells = find.descendant(of: await monthlyTable(tester, s.legendIncome), matching: find.byType(Tooltip));
         // January 2026 is the first month row of the 2026 column.
         var opened = false;
         for (var i = 0; i < cells.evaluate().length && !opened; i++) {
@@ -252,9 +244,8 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        await expand(tester, 'Yearly Summary');
         // 2024: the fund bought on 2 Dec is the year's savings (+1,000).
-        await tapAndWait(tester, find.descendant(of: section('Yearly Summary'), matching: find.text('+1,000.00 €')).first);
+        await tapAndWait(tester, find.descendant(of: await yearlyTable(tester), matching: find.text('+1,000.00 €')).first);
         expect(h.dialogText(tester), contains('2024 · Savings'));
         final fund = (await h.db.select(h.db.assets).get()).single.id;
         final fundRow = find.byKey(ValueKey('cfLine:series:null:null:$fund:'));
@@ -286,8 +277,8 @@ void main() {
     await h.pump(tester, language: 'it', locale: 'it_IT');
     try {
       await h.openTab(tester, 'Flussi di cassa');
-      await expand(tester, 'Uscite Mensili per Anno (tabella)');
-      final grid = section('Uscite Mensili per Anno (tabella)');
+      const it = AppStrings.it;
+      final grid = await monthlyTable(tester, it.legendExpenses, strings: it);
       await tapAndWait(tester, find.descendant(of: grid, matching: find.text('-4.000,00 €')).first);
       final text = h.dialogText(tester);
       expect(text, contains('Uscite = Entrate − Risparmi'));

@@ -11,6 +11,40 @@ typedef RateLookup = Future<double?> Function(String currency, int dayKey);
 /// ledger's "Saving for X" rows of event [eventId], summed.
 typedef SavingPlanSpending = ({int eventId, String name, double amount});
 
+/// What one merchant took in a period: the spending rows with its merchant
+/// key, in base currency (positive).
+class MerchantSpending {
+  /// The stable merchant key its rows share.
+  final String key;
+
+  /// The merchant as the statement names it.
+  final String name;
+  final double amount;
+
+  /// The rows summed into [amount].
+  final List<int> ids;
+
+  /// What its rows are categorized as: category → amount (null =
+  /// uncategorized).
+  final Map<int?, double> byCategory;
+
+  const MerchantSpending({required this.key, required this.name, required this.amount, required this.ids, required this.byCategory});
+
+  /// The category holding most of its spending; null when that is
+  /// uncategorized.
+  int? get mainCategory {
+    int? best;
+    var most = double.negativeInfinity;
+    for (final MapEntry(:key, :value) in byCategory.entries) {
+      if (value > most) {
+        best = key;
+        most = value;
+      }
+    }
+    return best;
+  }
+}
+
 /// What one period — a year, or one month of it — spent per category, got
 /// back in refunds, moved between the user's own instruments and set aside in
 /// spread saving plans, in base currency (positive numbers). Category `null`
@@ -34,6 +68,11 @@ class SpendingPeriod {
   /// What each spread saving plan set aside, biggest first.
   final List<SavingPlanSpending> savingPlans;
 
+  /// Merchant key → what was spent with that merchant: the rows of
+  /// [byCategory] that carry a merchant key, cash withdrawals left out (the
+  /// ledger cannot say where cash was spent).
+  final Map<String, MerchantSpending> merchants;
+
   const SpendingPeriod({
     this.byCategory = const {},
     this.idsByCategory = const {},
@@ -41,6 +80,7 @@ class SpendingPeriod {
     this.refundIds = const [],
     this.transfersExcluded = 0,
     this.savingPlans = const [],
+    this.merchants = const {},
   });
 
   /// A period without any row.
@@ -53,10 +93,35 @@ class SpendingPeriod {
   List<int> ids(int? categoryId) => idsByCategory[categoryId] ?? const [];
 
   double get savingPlansTotal => savingPlans.fold(0.0, (a, p) => a + p.amount);
+
+  /// The [limit] merchants paid most, biggest first.
+  List<MerchantSpending> topMerchants(int limit) {
+    final all = merchants.values.toList()
+      ..sort((a, b) {
+        final c = b.amount.compareTo(a.amount);
+        return c != 0 ? c : a.key.compareTo(b.key);
+      });
+    return all.take(limit).toList();
+  }
 }
 
+/// One row counted as spending, in base currency (positive): a transaction
+/// ([id]), or a step of a spread saving plan ([plan], no transaction). Rows
+/// without a merchant key, and cash withdrawals, have no merchant.
+typedef SpendingEntry = ({
+  DateTime day,
+  double amount,
+  int? id,
+  int? categoryId,
+  String? merchantKey,
+  String? merchantName,
+  ({int eventId, String name})? plan,
+});
+
 /// Spending per category, per year and per month, in base currency (positive
-/// numbers): a [SpendingPeriod] each, the months of a year adding up to it.
+/// numbers): a [SpendingPeriod] each, the months of a year adding up to it;
+/// and every spending row on its day ([entries]), so any run of days adds up
+/// the same way.
 ///
 /// Every outflow is spending except money moved between the user's own
 /// instruments: transfer-type categories (transfers, investments) are left
@@ -92,6 +157,13 @@ class SpendingByCategoryData {
   /// (year, month) → what that month spent.
   final Map<(int, int), SpendingPeriod> monthly;
 
+  /// The spending rows, by day.
+  final List<SpendingEntry> entries;
+
+  /// The refunds received (inflows in a reimbursement or expense category),
+  /// by day, in base currency (positive).
+  final List<({DateTime day, double amount, int id})> refundEntries;
+
   const SpendingByCategoryData({
     required this.years,
     required this.currentYear,
@@ -99,10 +171,111 @@ class SpendingByCategoryData {
     required this.baseCurrency,
     this.yearly = const {},
     this.monthly = const {},
+    this.entries = const [],
+    this.refundEntries = const [],
   });
+
+  /// The refunds received from [from] to [to], both included.
+  double refundsBetween(DateTime from, DateTime to) =>
+      refundEntries.where((e) => !e.day.isBefore(from) && !e.day.isAfter(to)).fold(0.0, (a, e) => a + e.amount);
+
+  /// Where the entries of [day] start.
+  int _firstOn(DateTime day) {
+    var lo = 0, hi = entries.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (entries[mid].day.isBefore(day)) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+
+  /// The entries of the days [from] to [to], both included.
+  Iterable<SpendingEntry> entriesBetween(DateTime from, DateTime to) sync* {
+    for (var i = _firstOn(from); i < entries.length && !entries[i].day.isAfter(to); i++) {
+      yield entries[i];
+    }
+  }
+
+  /// What the days [from] to [to] spent, in all.
+  double spentBetween(DateTime from, DateTime to) => entriesBetween(from, to).fold(0.0, (a, e) => a + e.amount);
+
+  /// What the days [from] to [to] spent, per category, merchant and saving
+  /// plan: the same sums as a month's, over any run of days.
+  SpendingPeriod sumOfDays(DateTime from, DateTime to) {
+    final sums = _PeriodSums();
+    for (final e in entriesBetween(from, to)) {
+      if (e.plan case final plan?) {
+        sums.plans[plan.eventId] = (eventId: plan.eventId, name: plan.name, amount: (sums.plans[plan.eventId]?.amount ?? 0) + e.amount);
+        continue;
+      }
+      sums.byCategory[e.categoryId] = (sums.byCategory[e.categoryId] ?? 0) + e.amount;
+      (sums.ids[e.categoryId] ??= []).add(e.id!);
+      if (e.merchantKey case final key?) {
+        sums.merchants.putIfAbsent(key, () => _MerchantSums(key, e.merchantName ?? key)).add(e.amount, e.categoryId, e.id!, e.merchantName);
+      }
+    }
+    return sums.build();
+  }
+
+  /// What the days [from] to [to] spent as a running total: the total at the
+  /// end of each day, one figure a day.
+  List<double> runningBetween(DateTime from, DateTime to) {
+    final out = <double>[];
+    var sum = 0.0;
+    var i = _firstOn(from);
+    for (var day = from; !day.isAfter(to); day = DateTime(day.year, day.month, day.day + 1)) {
+      while (i < entries.length && !entries[i].day.isAfter(day)) {
+        sum += entries[i++].amount;
+      }
+      out.add(sum);
+    }
+    return out;
+  }
 
   /// What [year] spent — or its [month] (1–12), when given.
   SpendingPeriod period(int year, [int? month]) => (month == null ? yearly[year] : monthly[(year, month)]) ?? SpendingPeriod.none;
+
+  /// What the [months] ((year, month) pairs) spent, summed into one period.
+  /// A month in [shares] counts for that share of it (5/30 of it when set
+  /// against a month still in progress); every other month counts whole.
+  SpendingPeriod sumOfMonths(Iterable<(int, int)> months, {Map<(int, int), double> shares = const {}}) {
+    final byCategory = <int?, double>{};
+    final ids = <int?, List<int>>{};
+    var refunds = 0.0;
+    final refundIds = <int>[];
+    var transfers = 0.0;
+    final plans = <int, SavingPlanSpending>{};
+    final merchants = <String, _MerchantSums>{};
+    for (final (y, m) in months) {
+      final p = period(y, m);
+      final share = shares[(y, m)] ?? 1;
+      p.byCategory.forEach((k, v) => byCategory[k] = (byCategory[k] ?? 0) + v * share);
+      p.idsByCategory.forEach((k, v) => (ids[k] ??= []).addAll(v));
+      refunds += p.refunds * share;
+      refundIds.addAll(p.refundIds);
+      transfers += p.transfersExcluded * share;
+      for (final plan in p.savingPlans) {
+        final sum = plans[plan.eventId]?.amount ?? 0;
+        plans[plan.eventId] = (eventId: plan.eventId, name: plan.name, amount: sum + plan.amount * share);
+      }
+      for (final merchant in p.merchants.values) {
+        merchants.putIfAbsent(merchant.key, () => _MerchantSums(merchant.key, merchant.name)).merge(merchant, share);
+      }
+    }
+    return SpendingPeriod(
+      byCategory: byCategory,
+      idsByCategory: ids,
+      refunds: refunds,
+      refundIds: refundIds,
+      transfersExcluded: transfers,
+      savingPlans: plans.values.toList()..sort((a, b) => b.amount.compareTo(a.amount)),
+      merchants: {for (final e in merchants.entries) e.key: e.value.build()},
+    );
+  }
 
   double transfersExcluded(int year) => period(year).transfersExcluded;
 
@@ -155,6 +328,32 @@ bool isSpendingCategoryType(CategoryType? type) => type != CategoryType.transfer
 /// something spent.
 bool isRefundCategoryType(CategoryType? type) => type == CategoryType.reimbursement || type == CategoryType.expense;
 
+/// The running sums of one merchant while the rows are read.
+class _MerchantSums {
+  final String key;
+  String name;
+  var amount = 0.0;
+  final ids = <int>[];
+  final byCategory = <int?, double>{};
+  _MerchantSums(this.key, this.name);
+
+  void add(double value, int? categoryId, int id, String? counterparty) {
+    amount += value;
+    ids.add(id);
+    byCategory[categoryId] = (byCategory[categoryId] ?? 0) + value;
+    // The key stands in for the name only until a row names the merchant.
+    if (name == key && counterparty != null && counterparty.isNotEmpty) name = counterparty;
+  }
+
+  void merge(MerchantSpending m, double share) {
+    amount += m.amount * share;
+    ids.addAll(m.ids);
+    m.byCategory.forEach((k, v) => byCategory[k] = (byCategory[k] ?? 0) + v * share);
+  }
+
+  MerchantSpending build() => MerchantSpending(key: key, name: name, amount: amount, ids: ids, byCategory: byCategory);
+}
+
 /// The running sums of one period while the rows are read.
 class _PeriodSums {
   final byCategory = <int?, double>{};
@@ -163,6 +362,7 @@ class _PeriodSums {
   final refundIds = <int>[];
   var transfers = 0.0;
   final plans = <int, SavingPlanSpending>{};
+  final merchants = <String, _MerchantSums>{};
 
   SpendingPeriod build() => SpendingPeriod(
     byCategory: byCategory,
@@ -175,6 +375,7 @@ class _PeriodSums {
         final c = b.amount.compareTo(a.amount);
         return c != 0 ? c : a.eventId.compareTo(b.eventId);
       }),
+    merchants: {for (final e in merchants.entries) e.key: e.value.build()},
   );
 }
 
@@ -194,6 +395,8 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
 }) async {
   final years = <int, _PeriodSums>{};
   final months = <(int, int), _PeriodSums>{};
+  final entries = <SpendingEntry>[];
+  final refundEntries = <({DateTime day, double amount, int id})>[];
   // A row counts in its year and in its month (of its value date).
   List<_PeriodSums> periodsOf(DateTime d) => [
     years.putIfAbsent(d.year, _PeriodSums.new),
@@ -229,9 +432,30 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
       } else if (!isSpendingCategoryType(cat?.type)) {
         p.transfers += t.amount.abs() * r;
       } else {
-        p.byCategory[catId] = (p.byCategory[catId] ?? 0) + t.amount.abs() * r;
+        final value = t.amount.abs() * r;
+        p.byCategory[catId] = (p.byCategory[catId] ?? 0) + value;
         (p.ids[catId] ??= []).add(t.id);
+        final key = t.merchantKey;
+        if (key != null && key.isNotEmpty && t.entryKind != BankEntryKind.atmWithdrawal) {
+          p.merchants.putIfAbsent(key, () => _MerchantSums(key, t.counterparty ?? key)).add(value, catId, t.id, t.counterparty);
+        }
       }
+    }
+    if (t.amount > 0) {
+      refundEntries.add((day: DateTime(t.valueDate.year, t.valueDate.month, t.valueDate.day), amount: t.amount * r, id: t.id));
+    }
+    if (t.amount < 0 && isSpendingCategoryType(cat?.type)) {
+      final key = t.merchantKey;
+      final merchant = key != null && key.isNotEmpty && t.entryKind != BankEntryKind.atmWithdrawal;
+      entries.add((
+        day: DateTime(t.valueDate.year, t.valueDate.month, t.valueDate.day),
+        amount: t.amount.abs() * r,
+        id: t.id,
+        categoryId: catId,
+        merchantKey: merchant ? key : null,
+        merchantName: merchant ? t.counterparty : null,
+        plan: null,
+      ));
     }
   }
   for (final item in savingItems) {
@@ -248,7 +472,17 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
         amount: (p.plans[item.eventId]?.amount ?? 0) + item.amount.abs() * r,
       );
     }
+    entries.add((
+      day: DateTime(item.date.year, item.date.month, item.date.day),
+      amount: item.amount.abs() * r,
+      id: null,
+      categoryId: null,
+      merchantKey: null,
+      merchantName: null,
+      plan: (eventId: item.eventId, name: item.eventName),
+    ));
   }
+  entries.sort((a, b) => a.day.compareTo(b.day));
   return SpendingByCategoryData(
     years: [
       for (final e in years.entries)
@@ -259,5 +493,7 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
     monthly: {for (final e in months.entries) e.key: e.value.build()},
     fxExcluded: fxExcluded,
     baseCurrency: baseCurrency,
+    entries: entries,
+    refundEntries: refundEntries..sort((a, b) => a.day.compareTo(b.day)),
   );
 }

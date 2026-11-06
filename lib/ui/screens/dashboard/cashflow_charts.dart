@@ -216,7 +216,11 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     Colors.indigo,
   ];
 
-  double _valOf(_MonthBucket mb) => widget.field == 'income' ? mb.income : mb.expenses;
+  double _valOf(_MonthBucket mb) => switch (widget.field) {
+    'income' => mb.income,
+    'savings' => mb.savings,
+    _ => mb.expenses,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -231,7 +235,10 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
         if (isVisible('${years[i].year}')) i,
     ];
     final visibleYears = visibleYearIdx.map((i) => years[i]).toList();
-    final maxY = visibleMaxY(visibleYears.expand((y) => y.months).map(_valOf));
+    final visibleValues = visibleYears.expand((y) => y.months).map(_valOf);
+    final maxY = visibleMaxY(visibleValues);
+    // Savings can go below zero.
+    final minY = visibleValues.fold(0.0, min) * 1.1;
     final allHidden = visibleYearIdx.isEmpty;
 
     final legend = Padding(
@@ -254,8 +261,8 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     final chart = allHidden
         ? Center(child: Text(ref.watch(appStringsProvider).allSeriesHidden))
         : widget.histogram
-        ? _buildHistogram(visibleYearIdx, maxY, isPrivate, amtFmt, sym, years)
-        : _buildLineChart(visibleYearIdx, maxY, isPrivate, amtFmt, sym, years);
+        ? _buildHistogram(visibleYearIdx, minY, maxY, isPrivate, amtFmt, sym, years)
+        : _buildLineChart(visibleYearIdx, minY, maxY, isPrivate, amtFmt, sym, years);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,7 +279,15 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     );
   }
 
-  Widget _buildLineChart(List<int> visibleYearIdx, double maxY, bool isPrivate, NumberFormat amtFmt, String sym, List<_YearBucket> years) {
+  Widget _buildLineChart(
+    List<int> visibleYearIdx,
+    double minY,
+    double maxY,
+    bool isPrivate,
+    NumberFormat amtFmt,
+    String sym,
+    List<_YearBucket> years,
+  ) {
     final lineBars = <LineChartBarData>[];
     final yearIndexMap = <int, int>{}; // lineBars index -> years index
     for (final i in visibleYearIdx) {
@@ -297,7 +312,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
         lineBarsData: lineBars,
         minX: 1,
         maxX: 12,
-        minY: 0,
+        minY: minY,
         maxY: maxY,
         gridData: const FlGridData(show: true),
         borderData: FlBorderData(show: false),
@@ -323,7 +338,15 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     );
   }
 
-  Widget _buildHistogram(List<int> visibleYearIdx, double maxY, bool isPrivate, NumberFormat amtFmt, String sym, List<_YearBucket> years) {
+  Widget _buildHistogram(
+    List<int> visibleYearIdx,
+    double minY,
+    double maxY,
+    bool isPrivate,
+    NumberFormat amtFmt,
+    String sym,
+    List<_YearBucket> years,
+  ) {
     final groups = <BarChartGroupData>[];
     final visibleCount = visibleYearIdx.length;
     final barW = visibleCount <= 4
@@ -352,6 +375,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     return BarChart(
       BarChartData(
         barGroups: groups,
+        minY: minY,
         maxY: maxY,
         gridData: const FlGridData(show: true),
         borderData: FlBorderData(show: false),

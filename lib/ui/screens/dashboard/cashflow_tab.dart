@@ -31,21 +31,52 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
   final _heights = <int, double>{};
   final _zooms = <int, _ChartZoom>{};
 
+  // Year by year: chart or table; totals or monthly averages.
+  bool _yearTable = false;
+  bool _yearAverages = false;
+
+  // Month by month: which figure ('income' / 'expenses' / 'savings'), and
+  // 'chart' / 'table' / 'yoy'.
+  String _monthField = 'income';
+  String _monthView = 'chart';
+  bool _monthBars = false;
+
   @override
   void initState() {
     super.initState();
     _savingWinCtl = TextEditingController(text: '$_savingWindow');
     _spendingWinCtl = TextEditingController(text: '$_spendingWindow');
     _velocityWinCtl = TextEditingController(text: '$_velocityWindow');
+    _applyRange(_appliedPeriod = _periodOrDefault(ref.read(_cashFlowPeriodProvider), ref.read(currentDateProvider)));
+  }
 
-    // Default zoom: last 365 days
-    final totalDays = chart_math.calendarDaysBetween(widget.allData.firstDate, ref.read(currentDateProvider)).toDouble();
-    final xMax = totalDays.clamp(0.0, double.infinity);
-    final xMin365 = (xMax - 365).clamp(0.0, double.infinity);
+  /// The period the daily charts' range was last set from.
+  CashFlowPeriod? _appliedPeriod;
+
+  /// The daily charts open on the period, at least the twelve months up to
+  /// its end: their averages run over a year, a month alone shows nothing of
+  /// them (every year: all of their history). Only the visible range moves:
+  /// their data and moving averages stay whole.
+  void _applyRange(CashFlowPeriod period) {
+    final first = widget.allData.firstDate;
+    final now = ref.read(currentDateProvider);
+    final todayX = chart_math.calendarDaysBetween(first, now).toDouble().clamp(0.0, double.infinity);
+    double minX;
+    double maxX;
+    if (period.kind == CashFlowPeriodKind.all) {
+      minX = 0;
+      maxX = todayX;
+    } else {
+      final days = period.daysUntil(now);
+      final yearBefore = DateTime(days.end.year - 1, days.end.month, days.end.day);
+      final start = days.start.isBefore(yearBefore) ? days.start : yearBefore;
+      minX = chart_math.calendarDaysBetween(first, start).toDouble().clamp(0.0, double.infinity);
+      maxX = chart_math.calendarDaysBetween(first, days.end).toDouble().clamp(minX, double.infinity);
+    }
     for (final id in [_idSaving, _idSpending, _idVelocity]) {
       _zooms[id] = _ChartZoom()
-        ..minX = xMin365
-        ..maxX = xMax;
+        ..minX = minX
+        ..maxX = maxX;
     }
   }
 
@@ -127,6 +158,22 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     z.maxY = maxY;
   });
 
+  Widget _controls(List<Widget> children) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(spacing: 12, runSpacing: 8, children: children),
+    ),
+  );
+
+  Widget _seg<T>(Map<T, String> options, T selected, ValueChanged<T> onChanged) => SegmentedButton<T>(
+    segments: [for (final e in options.entries) ButtonSegment<T>(value: e.key, label: Text(e.value))],
+    selected: {selected},
+    onSelectionChanged: (v) => onChanged(v.first),
+    showSelectedIcon: false,
+    style: const ButtonStyle(visualDensity: VisualDensity.compact),
+  );
+
   @override
   Widget build(BuildContext context) {
     final allData = widget.allData;
@@ -198,141 +245,222 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       ),
     ];
 
-    return MobilePullToRefresh(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 40, 16),
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          for (int i = 0; i < chartDefs.length; i++) ...[
-            Builder(
-              builder: (_) {
-                final c = chartDefs[i];
-                final z = _zoomFor(c.id);
-                return ChartCard(
-                  chart: c.chart,
-                  series: c.series,
-                  allData: allData,
-                  hidden: _hiddenFor(c.id),
-                  locale: locale,
-                  language: widget.language,
-                  chartHeight: _heightFor(c.id),
-                  zoomMinX: z.minX,
-                  zoomMaxX: z.maxX,
-                  zoomMinY: z.minY,
-                  zoomMaxY: z.maxY,
-                  onToggle: (key) => _onToggle(c.id, key),
-                  onToggleGroup: (keys) => _onToggleGroup(c.id, keys),
-                  onToggleHideComponents: () {},
-                  onZoom: (minX, maxX, minY, maxY) => _onZoom(c.id, minX, maxX, minY, maxY),
-                  onHeightChanged: (h) => setState(() => _heights[c.id] = h.clamp(200.0, 900.0)),
-                  headerExtra: _maField(c.ctl, c.onWin),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-          ],
-          // The income records the yearly figures below leave out (never
-          // converted 1:1), counted once above them.
-          if (incomeRowsWithoutRate != null && incomeRowsWithoutRate > 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Footnote(s.incomeFxExcluded(incomeRowsWithoutRate), key: const Key('incomeFxFootnote')),
-            ),
-          // Where the money goes: one year as a Sankey. Income, savings and
-          // expenses are the yearly Income/Expense/Savings figures below (one
-          // source of truth); the ledger only splits expenses by category.
-          ExpansionTile(
-            key: const Key('spendingByCategoryTile'),
-            title: Text(ref.watch(appStringsProvider).spendingByCategoryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(ref.watch(appStringsProvider).spendingByCategorySubtitle, style: Theme.of(context).textTheme.bodySmall),
-            initiallyExpanded: true,
-            children: [
-              ref
-                  .watch(_spendingByCategoryProvider)
-                  .when(
-                    loading: () => const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text(s.error(e))),
-                    data: (d) => ieAsync.isLoading
-                        ? const Padding(
-                            padding: EdgeInsets.all(24),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        : CashFlowSankeyCard(
-                            spending: d,
-                            years: {
-                              for (final y in ieData?.years ?? const <_YearBucket>[])
-                                y.year: (income: y.income, savings: y.savings, refunds: y.refunds),
-                            },
-                            // The monthly table's figures, for the month a user may pick.
-                            months: {
-                              for (final y in ieData?.years ?? const <_YearBucket>[])
-                                for (final m in y.months) (y.year, m.month): (income: m.income, savings: m.savings, refunds: m.refunds),
-                            },
-                            currentYear: ref.watch(currentDateProvider).year,
-                            locale: locale,
-                          ),
+    final now = ref.watch(currentDateProvider);
+    final spendingAsync = ref.watch(_spendingByCategoryProvider);
+    final spending = spendingAsync.value;
+    final period = _periodOrDefault(ref.watch(_cashFlowPeriodProvider), now);
+    // The period can move from the Spent screen too: the daily charts follow.
+    if (period != _appliedPeriod) _applyRange(_appliedPeriod = period);
+
+    final available = _availableMonths(ieData, spending);
+    // The Sankey adds up the period's months.
+    final sankeyPeriods = period.monthsIn(available);
+    final periodLabel = period.label(s, widget.language, now);
+    final totals = _totalsOf(ieData, sankeyPeriods);
+    // The yearly and monthly views show every year: the history the period
+    // sits in.
+    final viewData = ieData;
+    const bold = TextStyle(fontWeight: FontWeight.w600);
+    final small = Theme.of(context).textTheme.bodySmall;
+    const loader = Padding(
+      padding: EdgeInsets.all(24),
+      child: Center(child: CircularProgressIndicator()),
+    );
+
+    return Column(
+      children: [
+        // Pinned above the scroll: every section below follows it.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: _SpanSelector(period: period, available: available),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: MobilePullToRefresh(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 40, 16),
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                _CashFlowOverview(period: period, available: available, today: now, locale: locale, language: widget.language),
+                const SizedBox(height: 8),
+                // The income records the figures leave out (never converted
+                // 1:1), counted once under them.
+                if (incomeRowsWithoutRate != null && incomeRowsWithoutRate > 0)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Footnote(s.incomeFxExcluded(incomeRowsWithoutRate), key: const Key('incomeFxFootnote')),
                   ),
-            ],
-          ),
-          // Income/expense analytics sections
-          if (ieAsync.isLoading) ...[
-            const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 24),
-          ] else if (ieData != null) ...[
-            () {
-              final s = ref.watch(appStringsProvider);
-              return Column(
-                children: [
-                  // Yearly totals bar chart (Expenses + Savings per year)
+                // Where the money goes: the picked periods as a Sankey. Income,
+                // savings and expenses are the Income/Expense/Savings figures
+                // (one source of truth); the ledger only splits expenses by
+                // category. Under the spending: the full picture.
+                ExpansionTile(
+                  key: const Key('spendingByCategoryTile'),
+                  title: Text(s.spendingByCategoryTitle, style: bold),
+                  subtitle: Text(s.spendingByCategorySubtitle, style: small),
+                  initiallyExpanded: true,
+                  children: [
+                    if (period.byDays)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Footnote(s.cfSankeyNeedsMonths, key: const Key('cfSankeyNeedsMonths')),
+                      )
+                    else
+                      spendingAsync.when(
+                        loading: () => loader,
+                        error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text(s.error(e))),
+                        data: (d) => ieAsync.isLoading
+                            ? loader
+                            : CashFlowSankeyCard(spending: d, periods: sankeyPeriods, totals: totals, periodLabel: periodLabel, locale: locale),
+                      ),
+                  ],
+                ),
+                if (ieAsync.isLoading)
+                  loader
+                else if (viewData != null) ...[
                   ExpansionTile(
-                    title: Text(s.chartYearlyBarTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    key: const Key('cfYearByYearTile'),
+                    title: Text(s.cfYearByYear, style: bold),
                     initiallyExpanded: true,
-                    children: [_YearlyBarChart(data: ieData, locale: locale, language: widget.language)],
-                  ),
-                  // Monthly averages bar chart per year
-                  ExpansionTile(
-                    title: Text(s.chartMonthlyAvgTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_YearlyBarChart(data: ieData, locale: locale, language: widget.language, monthly: true)],
-                  ),
-                  // Yearly summary table
-                  ExpansionTile(
-                    title: Text(s.chartYearlySummaryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_YearlySummaryTable(data: ieData, locale: locale)],
-                  ),
-                  // Income: table → histogram → YoY changes
-                  ExpansionTile(
-                    title: Text(s.chartMonthlyIncTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'income')],
-                  ),
-                  ExpansionTile(
-                    title: Text(s.chartMonthlyIncomeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                     children: [
-                      _MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'income', histogram: true),
+                      _controls([
+                        _seg<bool>({false: s.cfViewChart, true: s.cfViewTable}, _yearTable, (v) => setState(() => _yearTable = v)),
+                        if (!_yearTable)
+                          _seg<bool>({false: s.cfTotals, true: s.cfMonthlyAverage}, _yearAverages, (v) => setState(() => _yearAverages = v)),
+                      ]),
+                      if (_yearTable)
+                        _YearlySummaryTable(data: viewData, locale: locale)
+                      else
+                        _YearlyBarChart(data: viewData, locale: locale, language: widget.language, monthly: _yearAverages),
                     ],
                   ),
                   ExpansionTile(
-                    title: Text(s.chartYoYTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_YoYDiffTable(data: ieData, locale: locale, language: widget.language)],
+                    key: const Key('cfMonthByMonthTile'),
+                    title: Text(s.cfMonthByMonth, style: bold),
+                    children: [
+                      _controls([
+                        _seg<String>(
+                          {'income': s.legendIncome, 'expenses': s.legendExpenses, 'savings': s.legendSavings},
+                          _monthField,
+                          (v) => setState(() => _monthField = v),
+                        ),
+                        _seg<String>(
+                          {'chart': s.cfViewChart, 'table': s.cfViewTable, 'yoy': s.cfViewYoY},
+                          _monthView,
+                          (v) => setState(() => _monthView = v),
+                        ),
+                        // Prototype only: lines or grouped bars, to pick one.
+                        if (_monthView == 'chart')
+                          _seg<bool>({false: s.cfChartLines, true: s.cfChartBars}, _monthBars, (v) => setState(() => _monthBars = v)),
+                      ]),
+                      switch (_monthView) {
+                        'table' => _MonthlyGrid(data: viewData, locale: locale, language: widget.language, field: _monthField),
+                        'yoy' => _YoYDiffTable(data: viewData, previous: ieData, locale: locale, language: widget.language, field: _monthField),
+                        _ => _MonthlyByYearLineChart(
+                          data: viewData,
+                          locale: locale,
+                          language: widget.language,
+                          field: _monthField,
+                          histogram: _monthBars,
+                        ),
+                      },
+                    ],
                   ),
-                  // Expenses: monthly grid + line chart
-                  ExpansionTile(
-                    title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
-                  ),
-                  ExpansionTile(
-                    title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
-                  ),
-                  const SizedBox(height: 24),
                 ],
-              );
-            }(),
-          ],
-        ],
-      ),
+                // The daily charts, closed by default: the picked periods only
+                // set their visible range (see _applyRange).
+                ExpansionTile(
+                  key: const Key('cfTrendsTile'),
+                  title: Text(s.cfTrends, style: bold),
+                  subtitle: Text(s.cfTrendsSubtitle, style: small),
+                  children: [
+                    for (final c in chartDefs) ...[
+                      Builder(
+                        builder: (_) {
+                          final z = _zoomFor(c.id);
+                          return ChartCard(
+                            chart: c.chart,
+                            series: c.series,
+                            allData: allData,
+                            hidden: _hiddenFor(c.id),
+                            locale: locale,
+                            language: widget.language,
+                            chartHeight: _heightFor(c.id),
+                            zoomMinX: z.minX,
+                            zoomMaxX: z.maxX,
+                            zoomMinY: z.minY,
+                            zoomMaxY: z.maxY,
+                            onToggle: (key) => _onToggle(c.id, key),
+                            onToggleGroup: (keys) => _onToggleGroup(c.id, keys),
+                            onToggleHideComponents: () {},
+                            onZoom: (minX, maxX, minY, maxY) => _onZoom(c.id, minX, maxX, minY, maxY),
+                            onHeightChanged: (h) => setState(() => _heights[c.id] = h.clamp(200.0, 900.0)),
+                            headerExtra: _maField(c.ctl, c.onWin),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
+  }
+}
+
+/// Income, savings and refunds of [periods], summed from the monthly buckets
+/// (a year's months add up to the year).
+CashFlowTotals _totalsOf(_IncomeExpenseData? data, Set<(int, int)> periods) {
+  var income = 0.0, savings = 0.0, refunds = 0.0;
+  for (final y in data?.years ?? const <_YearBucket>[]) {
+    for (final m in y.months) {
+      if (!periods.contains((y.year, m.month))) continue;
+      income += m.income;
+      savings += m.savings;
+      refunds += m.refunds;
+    }
+  }
+  return (income: income, savings: savings, refunds: refunds);
+}
+
+/// How a figure moved from [before] to [now], as an amount ([money]), colored
+/// by whether up is good. An amount is position size: privacy mode masks it.
+Widget _moneyChange(double now, double before, {required bool upIsGood, required NumberFormat money, bool large = false}) {
+  final d = now - before;
+  return _ChangeText(
+    text: '${d >= 0 ? '▲' : '▼'} ${money.format(d.abs())}',
+    good: d.abs() < 0.5 ? null : (d > 0) == upIsGood,
+    amount: true,
+    large: large,
+  );
+}
+
+/// A change next to a figure: green when it is for the better, red when for
+/// the worse, muted when there is no telling ([good] null).
+class _ChangeText extends StatelessWidget {
+  final String text;
+  final bool? good;
+
+  /// The change is an amount: position size, masked in privacy mode.
+  final bool amount;
+
+  /// In a screen's heading rather than next to a card's figure.
+  final bool large;
+  const _ChangeText({required this.text, required this.good, this.amount = false, this.large = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = switch (good) {
+      true => Colors.green.shade500,
+      false => theme.colorScheme.error,
+      null => theme.colorScheme.onSurfaceVariant,
+    };
+    final style = (large ? theme.textTheme.titleMedium : theme.textTheme.titleSmall)?.copyWith(color: color, fontWeight: FontWeight.w600);
+    return amount ? PrivacyText(text, style: style) : Text(text, style: style);
   }
 }

@@ -40,11 +40,13 @@ void main() {
     2025: (income: 2000, savings: -500, refunds: 0), // expenses 2500
   };
 
+  // The card shows the periods the Cash Flow tab picked: here a whole [year].
   Future<void> pump(
     WidgetTester tester, {
     required bool isPrivate,
     Map<int, CashFlowYearTotals> totals = years,
     List<Transaction>? ledger,
+    int year = 2025,
   }) async {
     final txs = ledger ?? baseTxs;
     tester.view.physicalSize = const Size(1200, 1600);
@@ -67,7 +69,13 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
-              child: CashFlowSankeyCard(spending: spending, years: totals, currentYear: 2025, locale: 'en_US'),
+              child: CashFlowSankeyCard(
+                spending: spending,
+                periods: {for (var m = 1; m <= 12; m++) (year, m)},
+                totals: totals[year]!,
+                periodLabel: '$year',
+                locale: 'en_US',
+              ),
             ),
           ),
         ),
@@ -94,13 +102,10 @@ void main() {
     expect(travelShare, findsOneWidget);
     expect(masked(inNode('out:3', '€1,500')), isTrue, reason: 'position size');
     expect(masked(travelShare), isFalse, reason: 'shape, not magnitude');
-    expect(masked(find.byKey(const Key('sankeySavingsRate'))), isFalse);
   });
 
-  testWidgets('switching year rebuilds the flows from that year\'s figures', (tester) async {
-    await pump(tester, isPrivate: false);
-    await tester.tap(find.byKey(const Key('sankeyYear:2024')));
-    await tester.pumpAndSettle();
+  testWidgets('another year: the flows are built from that year\'s figures', (tester) async {
+    await pump(tester, isPrivate: false, year: 2024);
     expect(find.byKey(const ValueKey('sankeyNode:fromSavings')), findsNothing);
     expect(inNode('saved', '€1,000'), findsOneWidget);
     expect(inNode('saved', ' · 33.3%'), findsOneWidget);
@@ -157,9 +162,7 @@ void main() {
   });
 
   testWidgets('tapping a category lists exactly the transactions summed into it', (tester) async {
-    await pump(tester, isPrivate: false);
-    await tester.tap(find.byKey(const Key('sankeyYear:2024')));
-    await tester.pumpAndSettle();
+    await pump(tester, isPrivate: false, year: 2024);
     await tester.tap(find.byKey(const ValueKey('sankeyNode:out:2')));
     await tester.pumpAndSettle();
     expect(find.text('Groceries · 2024 (1)'), findsOneWidget);

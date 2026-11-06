@@ -9,7 +9,6 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
-import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart';
 
 import 'dashboard_harness.dart';
 
@@ -39,15 +38,10 @@ void main() {
     await h.pump(tester);
     try {
       await h.openTab(tester, 'Cash Flow');
-      final card = find.byType(CashFlowSankeyCard);
-      final y2025 = tester.widget<CashFlowSankeyCard>(card).years[2025]!;
+      await h.pickYear(tester, 2025);
+      final y2025 = h.sankeyTotals(tester);
       expect(y2025.income, 36000);
       expect(y2025.savings, -1200, reason: 'the yearly savings went down by what was set aside');
-
-      final chip = find.byKey(const Key('sankeyYear:2025'));
-      await tester.ensureVisible(chip);
-      await tester.tap(chip);
-      await h.settle(tester);
 
       expect(inNode('plan:$car', 'Saving for Car'), findsOneWidget);
       expect(inNode('plan:$car', '€1,200'), findsOneWidget);

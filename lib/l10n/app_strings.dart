@@ -1593,8 +1593,8 @@ class AppStrings {
   // Spending by category chart
   String get spendingByCategoryTitle => _it ? 'Dove vanno i soldi' : 'Where the money goes';
   String get spendingByCategorySubtitle => _it
-      ? 'Da dove arrivano e dove vanno i soldi, per categoria, nell\'anno scelto (anno corrente ad oggi)'
-      : 'Where the money comes from and where it goes, by category, in the chosen year (current year to date)';
+      ? 'Da dove arrivano e dove vanno i soldi, per categoria, nel periodo scelto (anno in corso se non ne scegli)'
+      : 'Where the money comes from and where it goes, by category, in the picked period (the current year to date if none)';
   String get ytdSuffix => _it ? 'in corso' : 'YTD';
   String get spendingByCategoryEmpty => _it
       ? 'Nessuna entrata o spesa da mostrare. Importa i movimenti e usa la procedura guidata per assegnare le categorie.'
@@ -1836,6 +1836,71 @@ class AppStrings {
   String cfOfMovingAverage(String title) => _it ? '$title (MM)' : '$title (MA)';
   String get cfDiff => _it ? 'Diff.' : 'Diff';
   String cfVelocityOf(String series) => '$series vel.';
+  // Cash Flow tab: the period bar every section follows, and its sections.
+  String get cfAllYears => _it ? 'Tutti gli anni' : 'All years';
+  // Cash Flow summary: the comparison with another period.
+  String get cfCompare => _it ? 'Confronta' : 'Compare';
+  String get cfCompareNone => _it ? 'Nessun confronto' : 'No comparison';
+  String get cfComparePrevious => _it ? 'Periodo precedente' : 'Previous period';
+  String get cfCompareYearEarlier => _it ? 'Stesso periodo, anno prima' : 'Same period last year';
+  String cfComparedWith(String period) => _it ? 'Rispetto a $period' : 'Compared with $period';
+  // A month still in progress, set against the same share of another month.
+  String cfPartialMonth(String month, int days, int of, String other) => _it
+      ? '$month finora: $days giorni su $of, rispetto alla stessa quota di $other'
+      : '$month so far: $days of $of days, against the same share of $other';
+  String cfIncomeOver(int months, int of) => _it ? 'Entrate confrontate su $months mesi di $of' : 'Income compared over $months of $of months';
+  String get cfNoIncomeToCompare => _it ? 'Nessuna entrata da confrontare' : 'No income to compare';
+  String cfSoFarAgainst(String period, int days, int of, String other) =>
+      _it ? '$period finora ($days giorni su $of), rispetto a $other' : '$period so far ($days of $of days), against $other';
+  // Cash Flow: the span selector and its custom period.
+  String get cfSpanWeek => _it ? '1 s' : '1W';
+  String get cfSpanMonth => _it ? '1 m' : '1M';
+  String get cfSpanHalf => _it ? '6 m' : '6M';
+  String get cfSpanYear => _it ? '1 a' : '1Y';
+  String get cfCustomPeriod => _it ? 'Periodo personalizzato' : 'Custom period';
+  String get cfByMerchant => _it ? 'Per esercente' : 'By merchant';
+  String get cfNoIncome => _it ? 'Nessuna entrata nel periodo' : 'No income in this period';
+  String cfRecords(int n) => _it ? (n == 1 ? '1 registrazione' : '$n registrazioni') : (n == 1 ? '1 record' : '$n records');
+  String get cfSankeyNeedsMonths => _it
+      ? 'Dove vanno i soldi si vede per mesi e anni: scegli 1 m o più.'
+      : 'Where the money goes is shown for months and years: pick 1M or more.';
+  String get cfPreviousPeriodTooltip => _it ? 'Periodo precedente' : 'Previous period';
+  String get cfNextPeriodTooltip => _it ? 'Periodo successivo' : 'Next period';
+  // Cash Flow → Spending: the period's ledger spending, by category and merchant.
+  String cfTransactions(int n) => _it ? (n == 1 ? '1 transazione' : '$n transazioni') : (n == 1 ? '1 transaction' : '$n transactions');
+  String get cfByCategory => _it ? 'Per categoria' : 'By category';
+  String get cfManage => _it ? 'Gestisci' : 'Manage';
+  // Cash Flow overview: the period's spending, income and net, one card each.
+  String get cfInPositive => _it ? 'In positivo' : 'In the black';
+  String get cfInNegative => _it ? 'In negativo' : 'In the red';
+  String cfPageTooltip(String period) => _it ? 'Vai a $period' : 'Go to $period';
+  String cfVs(String period) => _it ? 'rispetto a $period' : 'vs $period';
+
+  /// How the Expenses list adds up, and where else the same Expenses stand.
+  String cfExpensesNote(String expenses, String yearByYear, String sankey) => _it
+      ? 'Le categorie sono le tue transazioni. Con i rimborsi ricevuti e ciò che nessuna transazione mostra fanno le $expenses: '
+            'entrate meno risparmi, come in «$yearByYear» e «$sankey».'
+      : 'The categories are your transactions. With the refunds received and what no transaction shows, they add up to the '
+            '$expenses: income less savings, as in "$yearByYear" and "$sankey".';
+  String get cfAllCategories => _it ? 'Tutte le categorie' : 'All categories';
+  String get cfRefundsNote => _it ? 'Soldi tornati per cose comprate' : 'Money back for things you bought';
+  String get cfUntrackedExpensesNote =>
+      _it ? 'Spese che nessuna transazione mostra: contanti, conti non importati' : 'Expenses no transaction shows: cash, accounts not imported';
+  String get cfUntrackedIncomeNote => _it
+      ? 'I risparmi sono cresciuti senza un\'entrata registrata: interessi, regali, rendimenti'
+      : 'Savings grew with no income recorded: interest, gifts, returns';
+  String get cfYearByYear => _it ? 'Anno per anno' : 'Year by year';
+  String get cfMonthByMonth => _it ? 'Mese per mese' : 'Month by month';
+  String get cfTrends => _it ? 'Andamenti' : 'Trends';
+  String get cfTrendsSubtitle =>
+      _it ? 'Risparmi, uscite e velocità giorno per giorno, con medie mobili' : 'Daily saving, expenses and velocity, with moving averages';
+  String get cfViewChart => _it ? 'Grafico' : 'Chart';
+  String get cfViewTable => _it ? 'Tabella' : 'Table';
+  String get cfViewYoY => _it ? 'Anno su anno' : 'Year-over-year';
+  String get cfTotals => _it ? 'Totali' : 'Totals';
+  String get cfMonthlyAverage => _it ? 'Media mensile' : 'Monthly average';
+  String get cfChartLines => _it ? 'Linee' : 'Lines';
+  String get cfChartBars => _it ? 'Barre' : 'Bars';
 
   /// Chip label of a price-change period unit (d, w, m, y, WTD, MTD, YTD, All).
   String priceChangeUnitLabel(String unit) => switch (unit) {
