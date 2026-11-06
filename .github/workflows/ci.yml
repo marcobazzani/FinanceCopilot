@@ -71,7 +71,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          # Pinned, not macos-latest (it once failed to foreground the app):
+          # macos-14 is no longer offered by GitHub, so macos-15.
+          - os: macos-15
             device: macos
           # Pinned to windows-2022: windows-latest moved to an MSVC (14.51)
           # that removed <experimental/coroutine>, which flutter_inappwebview_windows
