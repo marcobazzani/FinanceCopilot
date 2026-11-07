@@ -23,7 +23,7 @@ import 'dashboard_harness.dart';
 void main() {
   final h = DashboardHarness();
   const s = AppStrings.en;
-  final money = fmt.currencyFormat('en_US', '€', decimalDigits: 0);
+  final money = fmt.currencyFormat('en_US', '€');
 
   setUpAll(() async => initializeDateFormatting());
   setUp(h.open);

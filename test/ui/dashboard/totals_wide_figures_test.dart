@@ -19,7 +19,7 @@ import 'dashboard_harness.dart';
 void main() {
   const s = AppStrings.en;
   final h = DashboardHarness();
-  final euro = fmt.currencyFormat('it_IT', '€', decimalDigits: 2);
+  final euro = fmt.currencyFormat('it_IT', '€');
   // 1.108.341,51 € at its high, then 100.016,28 € spent.
   final total = '+${euro.format(1008325.23)}';
   final belowHigh = euro.format(-100016.28);

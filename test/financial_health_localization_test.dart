@@ -390,11 +390,11 @@ void main() {
       ]);
       expect(
         liquidity(c).formula,
-        'Cash / Net Worth x 100\n15,000 / 100,000 x 100\nCash = Accounts + Money Market: 15,000 + 0\nNet Worth = Total Assets chart',
+        'Cash / Net Worth x 100\n15,000.00 / 100,000.00 x 100\nCash = Accounts + Money Market: 15,000.00 + 0.00\nNet Worth = Total Assets chart',
       );
       expect(
         liquidAsset(c).formula,
-        '(Accounts above zero + Liquid Investments) / Gross Assets x 100\n(15,000 + 60,000) / 100,000 x 100\nGross Assets = Net Worth + Owed: 100,000 + 0',
+        '(Accounts above zero + Liquid Investments) / Gross Assets x 100\n(15,000.00 + 60,000.00) / 100,000.00 x 100\nGross Assets = Net Worth + Owed: 100,000.00 + 0.00',
       );
     });
 
@@ -422,11 +422,11 @@ void main() {
       ]);
       expect(
         liquidity(c).formula,
-        'Liquidità / Patrimonio netto x 100\n15.000 / 100.000 x 100\nLiquidità = Conti + Monetario: 15.000 + 0\nPatrimonio netto = grafico Total Assets',
+        'Liquidità / Patrimonio netto x 100\n15.000,00 / 100.000,00 x 100\nLiquidità = Conti + Monetario: 15.000,00 + 0,00\nPatrimonio netto = grafico Total Assets',
       );
       expect(
         incomeToWealth(c).formula,
-        'Entrate (12 mesi) / Patrimonio netto x 100\n42.000 / 100.000 x 100\nPatrimonio netto = grafico Total Assets',
+        'Entrate (12 mesi) / Patrimonio netto x 100\n42.000,00 / 100.000,00 x 100\nPatrimonio netto = grafico Total Assets',
       );
     });
 
@@ -436,20 +436,20 @@ void main() {
           AppStrings.en,
           'en_US',
           [
-            'Monthly Expenses = estimated annual expenses / 12: 30,000 / 12',
-            'Unused Credit Lines: 70,000 (about 28 more months, not counted)',
-            'Owed = overdrawn Accounts + Liabilities: 30,000 + 0',
-            'Gross Assets = Net Worth + Owed: 95,000 + 30,000',
+            'Monthly Expenses = estimated annual expenses / 12: 30,000.00 / 12',
+            'Unused Credit Lines: 70,000.00 (about 28 more months, not counted)',
+            'Owed = overdrawn Accounts + Liabilities: 30,000.00 + 0.00',
+            'Gross Assets = Net Worth + Owed: 95,000.00 + 30,000.00',
           ],
         ),
         (
           AppStrings.it,
           'it_IT',
           [
-            'Spese mensili = spese annue stimate / 12: 30.000 / 12',
-            'Fidi non usati: 70.000 (circa 28 mesi in più, non conteggiati)',
-            'Debiti = Conti scoperti + Passività: 30.000 + 0',
-            'Patrimonio lordo = Patrimonio netto + Debiti: 95.000 + 30.000',
+            'Spese mensili = spese annue stimate / 12: 30.000,00 / 12',
+            'Fidi non usati: 70.000,00 (circa 28 mesi in più, non conteggiati)',
+            'Debiti = Conti scoperti + Passività: 30.000,00 + 0,00',
+            'Patrimonio lordo = Patrimonio netto + Debiti: 95.000,00 + 30.000,00',
           ],
         ),
       ]) {
@@ -486,7 +486,7 @@ void main() {
         (AppStrings.en, 'Largest Stock or Crypto / Portfolio value x 100', 'No single stock or crypto held'),
         (AppStrings.it, 'Maggiore azione o cripto / Valore del portafoglio x 100', 'Nessuna azione o cripto in portafoglio'),
       ]) {
-        expect(largestPositionKpi(position: position, s: s, locale: 'en_US').formula, '$first\nACME: 12,500 / 100,000 x 100');
+        expect(largestPositionKpi(position: position, s: s, locale: 'en_US').formula, '$first\nACME: 12,500.00 / 100,000.00 x 100');
         expect(
           largestPositionKpi(position: const LargestPosition(name: null, value: 0, total: 100000), s: s, locale: 'en_US').formula,
           '$first\n$none',

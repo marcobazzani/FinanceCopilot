@@ -113,11 +113,11 @@ class _FinancialHealthTab extends ConsumerWidget {
         final investableNetWorth = sheet?.investableNetWorth ?? 0;
         final fireExpenses = smoothed?.value ?? 0;
         final fire = computeFire(netWorth: investableNetWorth, annualExpenses: fireExpenses, swrPct: swrPct);
-        final moneyFmt = NumberFormat.decimalPattern(locale);
+        final moneyFmt = fmt.amountFormat(locale);
         final currency = currencySymbol(allData?.baseCurrency ?? ieData?.baseCurrency ?? '');
         final fireCard = sheet == null
             ? HealthKpi(name: s.kpiFireNumber, description: s.noData)
-            : fireKpi(fire: fire, s: s, money: (amount) => '${moneyFmt.format(amount.round())} $currency');
+            : fireKpi(fire: fire, s: s, money: (amount) => '${moneyFmt.format(amount)} $currency');
         categories = [
           for (final cat in categories)
             if (cat.name == s.healthCatWealth) KpiCategory(name: cat.name, kpis: [...cat.kpis, fireCard]) else cat,

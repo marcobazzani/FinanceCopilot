@@ -117,7 +117,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('€2,400'), findsOneWidget);
+    expect(find.text('€2,400.00'), findsOneWidget);
     expect(tester.widget<UnifiedChart>(find.byType(UnifiedChart)).totalSpots, expected);
   });
 }

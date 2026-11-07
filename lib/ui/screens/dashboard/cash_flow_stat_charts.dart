@@ -24,8 +24,8 @@ Color _goodColor(bool? good, ColorScheme scheme) => switch (good) {
   null => scheme.primary,
 };
 
-/// [value] in a few characters ("2.6K €"), for chart labels.
-String _compact(double value, String locale, String symbol) => '${NumberFormat.compact(locale: locale).format(value)} $symbol';
+/// [value] as money, two decimals, for chart labels.
+String _amount(double value, String locale, String symbol) => fmt.currencyFormat(locale, symbol).format(value);
 
 /// A running total over the whole period, day 1 to its last: the period's
 /// own so far ([now], ending today on a dot) over the comparison period's
@@ -77,7 +77,7 @@ class _RunningChart extends ConsumerWidget {
   /// The box shown for the day [x] touched: the figure and the change between
   /// the two lines, then each line's day and total.
   LineTooltipItem _tooltip(int x, List<double> before, ColorScheme scheme) {
-    final money = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final money = fmt.currencyFormat(locale, symbol);
     final i = x - 1;
     final (a, b) = (i < now.length ? now[i] : null, i < before.length ? before[i] : null);
     final (thisDay, thatDay) = (start == null ? null : addDays(start!, i), otherStart == null ? null : addDays(otherStart!, i));
@@ -162,7 +162,7 @@ class _RunningChart extends ConsumerWidget {
                   show: !isPrivate,
                   alignment: b.isEmpty || last.y >= b.last ? Alignment.topRight : Alignment.bottomRight,
                   style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                  labelResolver: (line) => _compact(line.y, locale, symbol),
+                  labelResolver: (line) => _amount(line.y, locale, symbol),
                 ),
               ),
             if (detailed && b.length > 1 && (last == null || (b.last - last.y).abs() >= 0.5))
@@ -174,7 +174,7 @@ class _RunningChart extends ConsumerWidget {
                   show: !isPrivate,
                   alignment: last == null || b.last > last.y ? Alignment.topRight : Alignment.bottomRight,
                   style: TextStyle(fontSize: 11, color: scheme.outline),
-                  labelResolver: (line) => _compact(line.y, locale, symbol),
+                  labelResolver: (line) => _amount(line.y, locale, symbol),
                 ),
               ),
           ],
@@ -311,7 +311,7 @@ class _BarsChart extends ConsumerWidget {
                       show: !isPrivate,
                       alignment: Alignment.topRight,
                       style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                      labelResolver: (line) => _compact(line.y, locale, symbol),
+                      labelResolver: (line) => _amount(line.y, locale, symbol),
                     ),
                   ),
               ],
@@ -378,7 +378,7 @@ class _BarsChart extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
-              child: Text(_compact(top, locale, symbol), style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+              child: Text(_amount(top, locale, symbol), style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
             ),
           ),
       ],

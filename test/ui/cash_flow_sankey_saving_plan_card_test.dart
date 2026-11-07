@@ -83,17 +83,17 @@ void main() {
   testWidgets('the plan is its own band; nothing is left untracked', (tester) async {
     await pump(tester, isPrivate: false);
     expect(inNode('plan:5', 'Saving for T-Roc'), findsOneWidget);
-    expect(inNode('plan:5', '€1,200'), findsOneWidget);
+    expect(inNode('plan:5', '€1,200.00'), findsOneWidget);
     expect(inNode('plan:5', ' · 40.0%'), findsOneWidget, reason: '1,200 of the 3,000 available');
-    expect(inNode('out:2', '€1,000'), findsOneWidget);
-    expect(inNode('saved', '€800'), findsOneWidget);
+    expect(inNode('out:2', '€1,000.00'), findsOneWidget);
+    expect(inNode('saved', '€800.00'), findsOneWidget);
     expect(find.byKey(const ValueKey('sankeyNode:grp:untracked')), findsNothing, reason: 'the 1,200 used to be shown as untracked expenses');
     expect(find.byKey(const ValueKey('sankeyNode:untrackedIncome')), findsNothing);
   });
 
   testWidgets('privacy on: the amount set aside is masked, the plan name and its share stay readable', (tester) async {
     await pump(tester, isPrivate: true);
-    final amount = inNode('plan:5', '€1,200');
+    final amount = inNode('plan:5', '€1,200.00');
     expect(amount, findsOneWidget);
     expect(masked(amount), isTrue, reason: 'position size');
     final name = inNode('plan:5', 'Saving for T-Roc');

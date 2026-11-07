@@ -101,7 +101,7 @@ void main() {
         '  ~\uFFFC ÷ ~\uFFFC = ~0.0%\n'
         '$footer'
         '\n'
-        '0 / 6,000 x 100\n'
+        '0.00 / 6,000.00 x 100\n'
         '36,000.00 €\n'
         '36,000.00 €\n'
         '0.00 €\n'
@@ -130,7 +130,7 @@ void main() {
       expect(masked(inDialog(find.text(s.kpiFormulaSavingsRate))), isFalse);
       expect(masked(inDialog(find.textContaining('End-of-year 2026 prediction'))), isFalse, reason: 'the words around the figures');
       expect(maskedFigures(tester), [
-        '0 / 6,000 x 100 | null | 12.0',
+        '0.00 / 6,000.00 x 100 | null | 12.0',
         '36,000.00 € | FontWeight.w700 | 12.0',
         '36,000.00 € | FontWeight.w700 | 12.0',
         '0.00 € | FontWeight.w700 | 12.0',
@@ -215,7 +215,7 @@ void main() {
 
       // A plain formula: the figures below the symbolic line blur as one block.
       await h.openInfo(tester, s.kpiLiquidityRatio);
-      const figures = '14,500 / 14,500 x 100\nCash = Accounts + Money Market: 14,500 + 0\nNet Worth = Total Assets chart';
+      const figures = '14,500.00 / 14,500.00 x 100\nCash = Accounts + Money Market: 14,500.00 + 0.00\nNet Worth = Total Assets chart';
       expect(h.dialogText(tester), 'Net Worth Liquidity Ratio\nCash / Net Worth x 100\n$figures\nClose');
       expect(selectableTexts(tester), ['Cash / Net Worth x 100']);
       expect(masked(inDialog(find.text(figures))), isTrue);
@@ -248,7 +248,7 @@ void main() {
       await h.openInfo(tester, s.kpiSavingsRate);
       const text =
           'Savings / Income x 100\n'
-          '0 / 6,000 x 100\n'
+          '0.00 / 6,000.00 x 100\n'
           '\n'
           '$projectionBody'
           '  Income: ~36,000.00 €\n'

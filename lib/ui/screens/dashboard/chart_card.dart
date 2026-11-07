@@ -71,7 +71,7 @@ class ChartCard extends ConsumerWidget {
     // Null without a Total to read (every series hidden, or no data behind
     // them): the latest value is unknown, not zero.
     final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : null;
-    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final currFmt = fmt.currencyFormat(locale, symbol);
 
     // Series to actually draw (empty if hideComponents, but total is unaffected)
     final drawnSeries = hideComponents ? <ChartSeries>[] : visible;

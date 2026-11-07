@@ -14,6 +14,7 @@ import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show
 import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/footnote.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:intl/intl.dart';
 
 // ════════════════════════════════════════════════════
@@ -54,8 +55,7 @@ String _pctText(double pct, String locale) => '${NumberFormat('0.0', locale).for
 
 String _pct(double value, double total, String locale) => total > 0 ? _pctText(value / total * 100, locale) : '0%';
 
-String _fmtMoney(double value, String locale, String currency) =>
-    NumberFormat.currency(locale: locale, symbol: currency, decimalDigits: 0).format(value);
+String _fmtMoney(double value, String locale, String currency) => fmt.currencyFormat(locale, currency).format(value);
 
 // ════════════════════════════════════════════════════
 // AllocationTab
@@ -709,7 +709,11 @@ class _ConcentrationCard extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          // The label wraps when the row is short: the figure always reads whole.
+          Flexible(
+            child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          ),
+          const SizedBox(width: 8),
           PrivacyText(
             value,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -742,7 +746,7 @@ class _InvestmentCostsCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final symbol = currencySymbol(baseCurrency);
-    final amtFmt = NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: 0);
+    final amtFmt = fmt.currencyFormat(locale, symbol);
     final pctFmt = NumberFormat('0.00', locale);
     final theme = Theme.of(context);
 

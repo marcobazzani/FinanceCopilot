@@ -50,12 +50,17 @@ String editableFigure(double value, NumberFormat display, {required String local
   return (value: value, invalid: value == null);
 }
 
+// Every amount of money on screen has two decimals: never rounded to a whole
+// amount, never shortened ("25K"). Percentages and plain numbers keep their
+// own formats.
+
+/// An amount with two decimals: "1,234.56" ("1.234,56" in it_IT).
 NumberFormat amountFormat(String locale) => NumberFormat('#,##0.00', locale);
 
 NumberFormat qtyFormat(String locale) => NumberFormat('#,##0.####', locale);
 
-NumberFormat currencyFormat(String locale, String symbol, {int? decimalDigits}) =>
-    NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: decimalDigits);
+/// Money with its [symbol], two decimals: "€1,234.56" ("1.234,56 €").
+NumberFormat currencyFormat(String locale, String symbol) => NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: 2);
 
 /// Format a date as yyyy-MM-dd without DateFormat overhead.
 String formatYmd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

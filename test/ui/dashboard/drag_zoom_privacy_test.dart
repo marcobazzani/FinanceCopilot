@@ -29,7 +29,7 @@ void main() {
 
   // The readout is two lines: "<date> – <date>" and "€<value> – €<value>".
   final dateRange = find.textContaining(RegExp(r'\d{4} – '));
-  final valueRange = find.textContaining(RegExp('€[0-9,]+ – €'));
+  final valueRange = find.textContaining(RegExp(r'€[0-9,]+\.[0-9]{2} – €'));
 
   /// Mouse-drags a selection rectangle across the middle of [area] and leaves
   /// the button down, so the readout stays on screen.

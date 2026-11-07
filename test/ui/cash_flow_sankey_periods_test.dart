@@ -109,21 +109,21 @@ void main() {
 
   testWidgets('a year shows the year\'s figures; a month its own figures and rows', (tester) async {
     await pump(tester, periods: yearOf(2025), label: '2025');
-    expect(inNode('income', '€2,000'), findsOneWidget, reason: 'the year 2025');
+    expect(inNode('income', '€2,000.00'), findsOneWidget, reason: 'the year 2025');
 
     await pump(tester, periods: {(2025, 2)}, label: 'Feb 2025');
     // February 2025: income 1,000, savings −900 → expenses 1,900.
-    expect(inNode('income', '€1,000'), findsOneWidget);
-    expect(inNode('fromSavings', '€900'), findsOneWidget);
-    expect(inNode('out:3', '€1,500'), findsOneWidget);
-    expect(inNode('grp:uncategorized', '€300'), findsOneWidget);
-    expect(inNode('grp:untracked', '€100'), findsOneWidget, reason: '1,900 − (1,500 + 300)');
+    expect(inNode('income', '€1,000.00'), findsOneWidget);
+    expect(inNode('fromSavings', '€900.00'), findsOneWidget);
+    expect(inNode('out:3', '€1,500.00'), findsOneWidget);
+    expect(inNode('grp:uncategorized', '€300.00'), findsOneWidget);
+    expect(inNode('grp:untracked', '€100.00'), findsOneWidget, reason: '1,900 − (1,500 + 300)');
     expect(node('out:2'), findsNothing, reason: 'no groceries in February');
-    expect(find.text('€1,900'), findsOneWidget, reason: 'the total available');
+    expect(find.text('€1,900.00'), findsOneWidget, reason: 'the total available');
 
     await pump(tester, periods: yearOf(2025), label: '2025');
-    expect(inNode('income', '€2,000'), findsOneWidget, reason: 'back to the whole year');
-    expect(inNode('out:2', '€200'), findsOneWidget);
+    expect(inNode('income', '€2,000.00'), findsOneWidget, reason: 'back to the whole year');
+    expect(inNode('out:2', '€200.00'), findsOneWidget);
   });
 
   testWidgets('a category of a month lists that month\'s rows, under the month\'s name', (tester) async {
@@ -136,25 +136,25 @@ void main() {
 
   testWidgets('each month shows its own figures, whichever year it is in', (tester) async {
     await pump(tester, periods: {(2024, 3)}, label: 'Mar 2024');
-    expect(inNode('income', '€1,500'), findsOneWidget, reason: 'March 2024');
-    expect(inNode('out:3', '€500'), findsOneWidget);
+    expect(inNode('income', '€1,500.00'), findsOneWidget, reason: 'March 2024');
+    expect(inNode('out:3', '€500.00'), findsOneWidget);
 
     await pump(tester, periods: {(2024, 12)}, label: 'Dec 2024');
-    expect(inNode('income', '€500'), findsOneWidget, reason: 'December 2024');
+    expect(inNode('income', '€500.00'), findsOneWidget, reason: 'December 2024');
   });
 
   testWidgets('months of two years are summed, their figures and their rows', (tester) async {
     await pump(tester, periods: {(2024, 12), (2025, 2)}, label: 'Dec 2024 · Feb 2025');
     // 500 + 1,000 of income, 900 taken from savings: 2,400 of expenses, 1,800 in the ledger.
-    expect(inNode('income', '€1,500'), findsOneWidget);
-    expect(inNode('fromSavings', '€900'), findsOneWidget);
-    expect(inNode('out:3', '€1,500'), findsOneWidget);
-    expect(inNode('grp:untracked', '€600'), findsOneWidget, reason: '2,400 − (1,500 + 300)');
+    expect(inNode('income', '€1,500.00'), findsOneWidget);
+    expect(inNode('fromSavings', '€900.00'), findsOneWidget);
+    expect(inNode('out:3', '€1,500.00'), findsOneWidget);
+    expect(inNode('grp:untracked', '€600.00'), findsOneWidget, reason: '2,400 − (1,500 + 300)');
   });
 
   testWidgets('privacy on: a month\'s amounts are masked, the percentages are not', (tester) async {
     await pump(tester, periods: {(2025, 2)}, label: 'Feb 2025', isPrivate: true);
-    final income = inNode('income', '€1,000');
+    final income = inNode('income', '€1,000.00');
     expect(income, findsOneWidget);
     expect(masked(income), isTrue, reason: 'position size');
     final share = inNode('out:3', ' · 78.9%');

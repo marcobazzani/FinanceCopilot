@@ -67,11 +67,12 @@ void main() {
       expect(result, contains('99.99'));
     });
 
-    test('respects custom decimalDigits', () {
-      final fmt = currencyFormat('en_US', 'USD', decimalDigits: 0);
-      final result = fmt.format(1234.56);
-      expect(result, contains('1,235'));
-      expect(result, isNot(contains('.')));
+    test('always two decimals, never rounded to a whole amount', () {
+      expect(currencyFormat('en_US', 'USD').format(1234.56), contains('1,234.56'));
+      expect(currencyFormat('en_US', 'USD').format(1235), contains('1,235.00'));
+      expect(currencyFormat('it_IT', '€').format(43235.4), '43.235,40\u00a0€');
+      // A currency usually spelled without decimals gets two all the same.
+      expect(currencyFormat('ja_JP', '¥').format(1234.5), contains('1,234.50'));
     });
   });
 

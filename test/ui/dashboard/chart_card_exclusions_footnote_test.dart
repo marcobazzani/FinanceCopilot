@@ -97,13 +97,13 @@ void main() {
 
   testWidgets('an account without a rate is counted under the total it is left out of', (tester) async {
     await pump(tester, card('Cash', [euros, dollars]));
-    expect(find.text('€1,200'), findsOneWidget, reason: 'the euro account alone, the other never added 1:1');
+    expect(find.text('€1,200.00'), findsOneWidget, reason: 'the euro account alone, the other never added 1:1');
     expect(note(1), findsOneWidget);
   });
 
   testWidgets('a Gain chart counts the asset whose gain it cannot draw', (tester) async {
     await pump(tester, card('Gain', [gain5, gain6]));
-    expect(find.text('€30'), findsOneWidget);
+    expect(find.text('€30.00'), findsOneWidget);
     expect(note(1), findsOneWidget);
   });
 
@@ -114,13 +114,13 @@ void main() {
 
   testWidgets('a hidden series is not in the total, so it is not counted', (tester) async {
     await pump(tester, card('Cash', [euros, dollars], hidden: const {'account:2'}));
-    expect(find.text('€1,200'), findsOneWidget);
+    expect(find.text('€1,200.00'), findsOneWidget);
     expect(anyNote(), findsNothing);
   });
 
   testWidgets('nothing left out: no note', (tester) async {
     await pump(tester, card('Portfolio', [market5, market6]));
-    expect(find.text('€680'), findsOneWidget);
+    expect(find.text('€680.00'), findsOneWidget);
     expect(anyNote(), findsNothing);
   });
 
@@ -133,7 +133,7 @@ void main() {
     final container = await pump(tester, card('Cash', [euros, dollars]));
     container.read(privacyModeProvider.notifier).state = true;
     await tester.pump(const Duration(milliseconds: 300));
-    expect(masked(find.text('€1,200')), isTrue, reason: 'a balance is position size');
+    expect(masked(find.text('€1,200.00')), isTrue, reason: 'a balance is position size');
     expect(note(1), findsOneWidget);
     expect(masked(note(1)), isFalse, reason: 'a count of contributors: shape, not magnitude');
   });

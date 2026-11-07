@@ -19,7 +19,7 @@ class _AssetChartSection extends ConsumerWidget {
         final s = ref.watch(appStringsProvider);
         final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
         final baseSymbol = currencySymbol(data.baseCurrency);
-        final baseFmt = fmt.currencyFormat(locale, baseSymbol, decimalDigits: 0);
+        final baseFmt = fmt.currencyFormat(locale, baseSymbol);
         final assetSymbol = currencySymbol(data.assetCurrency);
         final assetFmt = fmt.currencyFormat(locale, assetSymbol);
         return Column(
@@ -38,7 +38,6 @@ class _AssetChartSection extends ConsumerWidget {
                 series: [data.priceSeries],
                 firstDate: data.firstDate,
                 currency: data.assetCurrency,
-                valueDecimals: 2,
                 showsPositionSize: privatePrice,
               ),
           ],
@@ -58,7 +57,6 @@ class _AssetChartCard extends ConsumerStatefulWidget {
   final List<ChartSeries> series;
   final DateTime firstDate;
   final String currency; // for axis labels
-  final int valueDecimals; // 0 for money magnitudes, 2 for unit price
 
   /// Whether the charted values are position size, masked in privacy mode.
   /// False for the unit price of a listed instrument: public market data.
@@ -70,7 +68,6 @@ class _AssetChartCard extends ConsumerStatefulWidget {
     required this.series,
     required this.firstDate,
     required this.currency,
-    this.valueDecimals = 0,
     this.showsPositionSize = true,
   });
 
@@ -123,7 +120,6 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
       zoomMinY: _zoomMinY,
       zoomMaxY: _zoomMaxY,
       isPrivate: isPrivate,
-      valueDecimals: widget.valueDecimals,
     );
     // The drag zoom maps pixels through the Y range the chart draws.
     final yRange = chart.drawnYRange;
@@ -173,7 +169,6 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                             firstDate: widget.firstDate,
                             baseCurrency: widget.currency,
                             locale: locale,
-                            valueDecimals: widget.valueDecimals,
                             onZoom: _onZoom,
                             zoomedY: _zoomMinY != null || _zoomMaxY != null,
                             isPrivate: isPrivate,

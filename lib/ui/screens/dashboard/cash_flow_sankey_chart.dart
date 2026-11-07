@@ -70,7 +70,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> with _Sp
         child: EmptyState(key: const Key('spendingEmpty'), icon: Icons.account_tree_outlined, message: s.spendingByCategoryEmpty),
       );
     }
-    final money = fmt.currencyFormat(widget.locale, currencySymbol(d.baseCurrency), decimalDigits: 0);
+    final money = fmt.currencyFormat(widget.locale, currencySymbol(d.baseCurrency));
     final pct = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 1);
 
     Color colorOf(CashFlowNode n) => switch (n.kind) {

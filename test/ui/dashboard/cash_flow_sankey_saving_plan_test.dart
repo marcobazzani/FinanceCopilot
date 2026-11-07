@@ -44,10 +44,10 @@ void main() {
       expect(y2025.savings, -1200, reason: 'the yearly savings went down by what was set aside');
 
       expect(inNode('plan:$car', 'Saving for Car'), findsOneWidget);
-      expect(inNode('plan:$car', '€1,200'), findsOneWidget);
+      expect(inNode('plan:$car', '€1,200.00'), findsOneWidget);
       // Expenses 37,200: the 1,200 set aside and 36,000 the ledger does not
       // hold (the harness imports no spending). It used to read 37,200.
-      expect(inNode('grp:untracked', '€36,000'), findsOneWidget);
+      expect(inNode('grp:untracked', '€36,000.00'), findsOneWidget);
     } finally {
       await h.unmount(tester);
     }

@@ -38,10 +38,11 @@ void main() {
         );
   }
 
-  /// Left-axis labels of the yearly Income / Expenses / Savings bar chart.
+  /// Left-axis labels of the yearly Income / Expenses / Savings bar chart:
+  /// the texts of the chart spelling an amount in euros.
   List<String> yearlyAxis(WidgetTester tester) => [
     for (final t in tester.widgetList<Text>(find.descendant(of: find.byType(BarChart).first, matching: find.byType(Text))))
-      if (t.data != null && t.data!.endsWith(' €')) t.data!,
+      if (t.data != null && t.data!.contains('€')) t.data!,
   ];
 
   group('moving-average charts', () {
@@ -85,26 +86,31 @@ void main() {
   });
 
   group('yearly chart axis', () {
-    testWidgets('amounts are compacted by the display locale', (tester) async {
+    testWidgets('amounts are spelled with two decimals in the display locale', (tester) async {
       await h.seed();
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
         await h.openTab(tester, 'Flussi di cassa');
         final axis = yearlyAxis(tester);
-        // The top of the axis (36,000 income + 15% headroom) needs a decimal.
-        expect(axis, containsAll(['0 €', '10K €', '20K €', '30K €', '41,4K €']));
-        expect(axis.where((l) => l.contains('k') || l.contains('.')), isEmpty, reason: 'no hard-coded suffix or decimal point');
+        // The top of the axis (36,000 income + 15% headroom) in full, not shortened.
+        expect(axis, containsAll(['0,00\u00a0€', '10.000,00\u00a0€', '20.000,00\u00a0€', '30.000,00\u00a0€', '41.400,00\u00a0€']));
+        final italian = RegExp(r'^\d{1,3}(\.\d{3})*,\d{2}\u00a0€$');
+        expect(
+          axis.where((l) => !italian.hasMatch(l)),
+          isEmpty,
+          reason: 'no compact suffix, no hard-coded decimal point: dots group the thousands, a comma before the two decimals',
+        );
       } finally {
         await h.unmount(tester);
       }
     });
 
-    testWidgets('English compact amounts', (tester) async {
+    testWidgets('English amounts are spelled with two decimals', (tester) async {
       await h.seed();
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        expect(yearlyAxis(tester), containsAll(['0 €', '10K €', '20K €', '30K €', '41.4K €']));
+        expect(yearlyAxis(tester), containsAll(['€0.00', '€10,000.00', '€20,000.00', '€30,000.00', '€41,400.00']));
       } finally {
         await h.unmount(tester);
       }

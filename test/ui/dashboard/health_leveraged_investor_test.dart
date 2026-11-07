@@ -163,7 +163,7 @@ void main() {
     try {
       // Expenses of 36,000 a year over a 2.75% withdrawal rate; 82,000 of investable net worth covers 6.26% of it.
       expect(inKpi(s.kpiFireNumber, '6.26%'), findsOneWidget);
-      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,309,091 €')), findsOneWidget);
+      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,309,090.91 €')), findsOneWidget);
       expect(inKpi(s.kpiFireNumber, s.ratingScarso), findsOneWidget);
       expect(find.text('FI Target Progress'), findsNothing);
     } finally {
@@ -175,7 +175,7 @@ void main() {
     await seedLeveraged();
     await h.pump(tester, isPrivate: true);
     try {
-      expect(masked(inKpi(s.kpiFireNumber, '1,309,091 €')), isTrue, reason: 'an amount is position size');
+      expect(masked(inKpi(s.kpiFireNumber, '1,309,090.91 €')), isTrue, reason: 'an amount is position size');
       expect(masked(inKpi(s.kpiFireNumber, '6.26%')), isFalse, reason: 'a percentage is shape');
       for (final (kpi, value) in [
         (s.kpiLiquidityRatio, '39.02%'),
@@ -198,9 +198,9 @@ void main() {
       await h.openInfo(tester, s.kpiDebtToAssets);
       final dialog = find.byType(AlertDialog);
       const figures =
-          '30,000 / 112,000 x 100\n'
-          'Owed = overdrawn Accounts + Liabilities: 30,000 + 0\n'
-          'Gross Assets = Net Worth + Owed: 82,000 + 30,000';
+          '30,000.00 / 112,000.00 x 100\n'
+          'Owed = overdrawn Accounts + Liabilities: 30,000.00 + 0.00\n'
+          'Gross Assets = Net Worth + Owed: 82,000.00 + 30,000.00';
       expect(find.descendant(of: dialog, matching: find.text('Owed / Gross Assets x 100')), findsOneWidget);
       expect(masked(find.descendant(of: dialog, matching: find.text('Owed / Gross Assets x 100'))), isFalse);
       expect(masked(find.descendant(of: dialog, matching: find.text(figures))), isTrue);
@@ -216,10 +216,10 @@ void main() {
     try {
       await h.openInfo(tester, s.kpiExpenseCoverage);
       final text = h.dialogText(tester);
-      expect(text, contains('32,000 / 3,000'));
-      expect(text, contains('Monthly Expenses = estimated annual expenses / 12: 36,000 / 12'));
-      expect(text, contains('Cash = Accounts + Money Market: -28,000 + 60,000'));
-      expect(text, contains('Unused Credit Lines: 70,000 (about 23 more months, not counted)'));
+      expect(text, contains('32,000.00 / 3,000.00'));
+      expect(text, contains('Monthly Expenses = estimated annual expenses / 12: 36,000.00 / 12'));
+      expect(text, contains('Cash = Accounts + Money Market: -28,000.00 + 60,000.00'));
+      expect(text, contains('Unused Credit Lines: 70,000.00 (about 23 more months, not counted)'));
       await h.tapDialogButton(tester, s.close);
     } finally {
       await h.unmount(tester);
@@ -233,7 +233,7 @@ void main() {
       // On 10 March 2026: the salaries from 15 March 2025 on, twelve of them. A window of whole months
       // starting after the 10th of March 2025 would have lost March's, and read 33,000.
       await h.openInfo(tester, s.kpiIncomeToWealth);
-      expect(h.dialogText(tester), contains('36,000 / 82,000 x 100'));
+      expect(h.dialogText(tester), contains('36,000.00 / 82,000.00 x 100'));
       await h.tapDialogButton(tester, s.close);
     } finally {
       await h.unmount(tester);

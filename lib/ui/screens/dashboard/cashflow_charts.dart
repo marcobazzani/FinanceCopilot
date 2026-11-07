@@ -429,13 +429,12 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
 
 // Shared helpers
 
-/// A value-axis label of these charts: [v] in the compact notation of
-/// [locale] (e.g. "25K" in English, "1,5 Mln" in Italian) followed by the
-/// currency symbol, blurred in privacy mode like the History charts' axes —
-/// on a money chart the scale is position size.
+/// A value-axis label of these charts: [v] as money, two decimals, blurred
+/// in privacy mode like the History charts' axes — on a money chart the scale
+/// is position size.
 Widget _axisAmount(double v, String sym, String locale, {required bool isPrivate}) => PrivacyMask(
   isPrivate: isPrivate,
-  child: Text('${NumberFormat.compact(locale: locale).format(v)} $sym', style: const TextStyle(fontSize: 10)),
+  child: _AxisLabel(fmt.currencyFormat(locale, sym).format(v), style: const TextStyle(fontSize: 10)),
 );
 
 // (Cash flow rendering is handled by _ChartCard + _UnifiedChart above)

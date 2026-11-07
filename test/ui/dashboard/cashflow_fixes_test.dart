@@ -107,8 +107,8 @@ void main() {
   });
 
   group('value axis in privacy mode', () {
-    /// Amount labels (ending with the currency) and the other labels drawn by
-    /// the first chart of [section].
+    /// Amount labels (the texts spelling an amount in euros) and the other
+    /// labels drawn by the first chart of [section].
     ({List<Finder> amounts, List<Finder> others}) axisOf(WidgetTester tester, Finder section) {
       final chart = find.descendant(of: section, matching: find.byWidgetPredicate((w) => w is BarChart || w is LineChart)).first;
       final amounts = <Finder>[];
@@ -116,7 +116,7 @@ void main() {
       for (final e in find.descendant(of: chart, matching: find.byType(Text)).evaluate()) {
         final text = (e.widget as Text).data ?? '';
         final finder = find.byElementPredicate((el) => el == e);
-        (text.endsWith(' €') ? amounts : others).add(finder);
+        (text.contains('€') ? amounts : others).add(finder);
       }
       return (amounts: amounts, others: others);
     }

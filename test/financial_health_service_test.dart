@@ -316,7 +316,7 @@ void main() {
       final kpi = coverage(kpis(sheet: leveraged, estimatedAnnualExpenses: 48000));
       expect(kpi.value, 58); // 232,000 / 4,000
       expect(kpi.rating, Rating.ottimo);
-      expect(kpi.formula.split('\n'), contains('Monthly Expenses = estimated annual expenses / 12: 48,000 / 12'));
+      expect(kpi.formula.split('\n'), contains('Monthly Expenses = estimated annual expenses / 12: 48,000.00 / 12'));
     });
 
     test('with no estimate yet, the average of this year stands in and the formula says so', () {
@@ -333,7 +333,7 @@ void main() {
     test('unused credit lines are mentioned, never counted', () {
       final kpi = coverage(kpis(sheet: leveraged, estimatedAnnualExpenses: 48000));
       // 440,000 of lines − 130,000 drawn = 310,000, 77.5 months of 4,000 (rounds to 78).
-      expect(kpi.formula.split('\n'), contains('Unused Credit Lines: 310,000 (about 78 more months, not counted)'));
+      expect(kpi.formula.split('\n'), contains('Unused Credit Lines: 310,000.00 (about 78 more months, not counted)'));
       expect(kpi.value, 58, reason: 'the lines are not cash');
     });
 
@@ -455,7 +455,7 @@ void main() {
     test('the money-market funds are not counted twice: they are already liquid investments', () {
       expect(
         liquidAssetRatio(kpis(sheet: leveraged)).formula.split('\n')[1],
-        '(2,000 + 940,000) / 1,002,000 x 100',
+        '(2,000.00 + 940,000.00) / 1,002,000.00 x 100',
         reason: 'cash (with the money market) would add it again',
       );
     });
@@ -512,9 +512,9 @@ void main() {
       expect(kpi.rating, Rating.buono);
       expect(kpi.formula.split('\n'), [
         'Owed / Gross Assets x 100',
-        '130,000 / 1,002,000 x 100',
-        'Owed = overdrawn Accounts + Liabilities: 130,000 + 0',
-        'Gross Assets = Net Worth + Owed: 872,000 + 130,000',
+        '130,000.00 / 1,002,000.00 x 100',
+        'Owed = overdrawn Accounts + Liabilities: 130,000.00 + 0.00',
+        'Gross Assets = Net Worth + Owed: 872,000.00 + 130,000.00',
       ]);
     });
   });
@@ -542,7 +542,7 @@ void main() {
       final kpi = creditLineUsage(kpis(sheet: leveraged));
       expect(kpi.value, closeTo(29.545, 0.001));
       expect(kpi.rating, Rating.buono);
-      expect(kpi.formula, 'Overdrawn Accounts / Credit Lines x 100\n130,000 / 440,000 x 100');
+      expect(kpi.formula, 'Overdrawn Accounts / Credit Lines x 100\n130,000.00 / 440,000.00 x 100');
     });
 
     test('no credit lines: N/A, and it says why — it is not missing data', () {
@@ -631,30 +631,30 @@ void main() {
       final c = kpis(sheet: leveraged, annualIncome: 80000, annualSavings: 32000, rollingIncome: 90000, estimatedAnnualExpenses: 48000);
       expect(liquidityRatio(c).formula.split('\n'), [
         'Cash / Net Worth x 100',
-        '232,000 / 872,000 x 100',
-        'Cash = Accounts + Money Market: -128,000 + 360,000',
+        '232,000.00 / 872,000.00 x 100',
+        'Cash = Accounts + Money Market: -128,000.00 + 360,000.00',
         'Net Worth = Total Assets chart',
       ]);
       expect(coverage(c).formula.split('\n'), [
         'Cash / Monthly Expenses',
-        '232,000 / 4,000',
-        'Monthly Expenses = estimated annual expenses / 12: 48,000 / 12',
-        'Cash = Accounts + Money Market: -128,000 + 360,000',
-        'Unused Credit Lines: 310,000 (about 78 more months, not counted)',
+        '232,000.00 / 4,000.00',
+        'Monthly Expenses = estimated annual expenses / 12: 48,000.00 / 12',
+        'Cash = Accounts + Money Market: -128,000.00 + 360,000.00',
+        'Unused Credit Lines: 310,000.00 (about 78 more months, not counted)',
       ]);
       expect(investmentWeight(c).formula.split('\n'), [
         'Investments / Gross Assets x 100',
-        '1,000,000 / 1,002,000 x 100',
-        'Gross Assets = Net Worth + Owed: 872,000 + 130,000',
+        '1,000,000.00 / 1,002,000.00 x 100',
+        'Gross Assets = Net Worth + Owed: 872,000.00 + 130,000.00',
       ]);
       expect(liquidAssetRatio(c).formula.split('\n'), [
         '(Accounts above zero + Liquid Investments) / Gross Assets x 100',
-        '(2,000 + 940,000) / 1,002,000 x 100',
-        'Gross Assets = Net Worth + Owed: 872,000 + 130,000',
+        '(2,000.00 + 940,000.00) / 1,002,000.00 x 100',
+        'Gross Assets = Net Worth + Owed: 872,000.00 + 130,000.00',
       ]);
       expect(incomeToWealth(c).formula.split('\n'), [
         'Income (12m) / Net Worth x 100',
-        '90,000 / 872,000 x 100',
+        '90,000.00 / 872,000.00 x 100',
         'Net Worth = Total Assets chart',
       ]);
     });
@@ -854,7 +854,7 @@ void main() {
     test('the formula names the position and its amounts, so its amounts are private', () {
       final kpi = kpiOf(125);
       expect(kpi.value, 12.5);
-      expect(kpi.formula.split('\n'), ['Largest Stock or Crypto / Portfolio value x 100', 'ACME: 125 / 1,000 x 100']);
+      expect(kpi.formula.split('\n'), ['Largest Stock or Crypto / Portfolio value x 100', 'ACME: 125.00 / 1,000.00 x 100']);
       expect(kpi.formulaFiguresPrivate, isTrue);
     });
 

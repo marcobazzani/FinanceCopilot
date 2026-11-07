@@ -185,8 +185,8 @@ List<KpiCategory> computeKpis({
   required AppStrings s,
   required String locale,
 }) {
-  final f = NumberFormat.decimalPattern(locale);
-  String n(double v) => f.format(v.round());
+  final f = fmt.amountFormat(locale);
+  String n(double v) => f.format(v);
 
   final monthlyExpenses = estimatedAnnualExpenses != null ? estimatedAnnualExpenses / 12 : thisYearMonthlyExpenses;
 
@@ -451,8 +451,8 @@ HealthKpi largestPositionKpi({required LargestPosition? position, required AppSt
   if (position == null) {
     return HealthKpi(name: s.kpiLargestPosition, description: s.noData, formula: s.kpiFormulaLargestPosition);
   }
-  final f = NumberFormat.decimalPattern(locale);
-  String n(double v) => f.format(v.round());
+  final f = fmt.amountFormat(locale);
+  String n(double v) => f.format(v);
   final value = position.pct;
   final rating = rateLowerBetter(value, 5, 10, 20, inclusive: true);
   return HealthKpi(

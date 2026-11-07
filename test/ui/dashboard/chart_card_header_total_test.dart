@@ -65,12 +65,12 @@ void main() {
 
   bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
 
-  testWidgets('a chart with no data behind its series shows "—" as its total, not €0', (tester) async {
+  testWidgets('a chart with no data behind its series shows "—" as its total, not €0.00', (tester) async {
     await pump(tester, [
       card('Empty', [fund(const [])]),
     ]);
     expect(find.text('\u2014'), findsOneWidget);
-    expect(find.text('€0'), findsNothing);
+    expect(find.text('€0.00'), findsNothing);
   });
 
   testWidgets('with every series hidden the total is unknown, not zero', (tester) async {
@@ -84,7 +84,7 @@ void main() {
       ),
     ]);
     expect(find.text('\u2014'), findsOneWidget);
-    expect(find.text('€0'), findsNothing);
+    expect(find.text('€0.00'), findsNothing);
   });
 
   testWidgets('privacy mode masks a real total and leaves the dash readable', (tester) async {
@@ -94,12 +94,12 @@ void main() {
       ]),
       card('Empty', [fund(const [])]),
     ]);
-    expect(find.text('€1,234'), findsOneWidget);
-    expect(masked(find.text('€1,234')), isFalse, reason: 'privacy mode is off');
+    expect(find.text('€1,234.00'), findsOneWidget);
+    expect(masked(find.text('€1,234.00')), isFalse, reason: 'privacy mode is off');
 
     container.read(privacyModeProvider.notifier).state = true;
     await tester.pump(const Duration(milliseconds: 300));
-    expect(masked(find.text('€1,234')), isTrue, reason: 'a total is position size');
+    expect(masked(find.text('€1,234.00')), isTrue, reason: 'a total is position size');
     expect(find.text('\u2014'), findsOneWidget);
     expect(masked(find.text('\u2014')), isFalse, reason: 'an unknown total carries no magnitude');
   });

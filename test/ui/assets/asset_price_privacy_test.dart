@@ -187,7 +187,7 @@ void main() {
       await setPrivate(tester, true);
       expect(inCard('Price', '€121.00'), findsOneWidget, reason: 'the price card shows the last close');
       expect(masked(inCard('Price', '€121.00')), isFalse, reason: 'a listed close is public market data');
-      expect(masked(inCard('Asset', '€1,210')), isTrue, reason: 'the market value of the holding is position size');
+      expect(masked(inCard('Asset', '€1,210.00')), isTrue, reason: 'the market value of the holding is position size');
       expect(masked(find.text('@ 100.00')), isFalse, reason: 'an execution price on a market is public');
       expect(masked(find.text('qty: 10.00')), isTrue, reason: 'units held are position size');
 

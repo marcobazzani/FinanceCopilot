@@ -69,8 +69,8 @@ void main() {
   testWidgets('weighted TER, totals and rows when every fund has a TER', (tester) async {
     await pump(tester, known, knownValues);
     expect(costs('0.27%'), findsOneWidget);
-    expect(costs('€10,000'), findsOneWidget, reason: 'total value');
-    expect(costs('€27'), findsOneWidget, reason: 'total yearly cost');
+    expect(costs('€10,000.00'), findsOneWidget, reason: 'total value');
+    expect(costs('€27.00'), findsOneWidget, reason: 'total yearly cost');
     expect(costs('0.20%'), findsOneWidget);
     expect(costs('0.50%'), findsOneWidget);
     expect(costs('-'), findsNWidgets(2), reason: 'the stock has no TER and so no cost');
@@ -111,13 +111,13 @@ void main() {
 
   testWidgets('privacy: values and costs are masked, TERs and placeholders stay readable', (tester) async {
     final container = await pump(tester, known, knownValues);
-    for (final text in ['€6,000', '€12', '€10,000', '€27']) {
+    for (final text in ['€6,000.00', '€12.00', '€10,000.00', '€27.00']) {
       expect(masked(costs(text)), isFalse, reason: 'nothing is masked before privacy is on');
     }
 
     container.read(privacyModeProvider.notifier).state = true;
     await tester.pumpAndSettle();
-    for (final text in ['€6,000', '€3,000', '€1,000', '€12', '€15', '€10,000', '€27']) {
+    for (final text in ['€6,000.00', '€3,000.00', '€1,000.00', '€12.00', '€15.00', '€10,000.00', '€27.00']) {
       expect(costs(text), findsOneWidget, reason: '$text still rendered');
       expect(masked(costs(text)), isTrue, reason: '$text is position size');
     }
@@ -131,7 +131,7 @@ void main() {
       expect(t.style?.color, Colors.grey);
     }
     // Concentration: the portfolio value is masked, the holdings count is not.
-    expect(masked(find.text('€10,000').first), isTrue);
+    expect(masked(find.text('€10,000.00').first), isTrue);
     expect(masked(find.text('3')), isFalse);
   });
 }

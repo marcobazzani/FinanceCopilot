@@ -195,14 +195,14 @@ void main() {
     try {
       // Privacy off: the formula renders as before, figures included.
       await openInfo(tester, 'Net Worth Liquidity Ratio');
-      expect(selectable('15,000 / '), isTrue);
-      expect(masked(inDialog('15,000 / ')), isFalse);
+      expect(selectable('15,000.00 / '), isTrue);
+      expect(masked(inDialog('15,000.00 / ')), isFalse);
       await closeDialog(tester, 'Close');
 
       await setPrivate(tester, true);
 
       await openInfo(tester, 'Net Worth Liquidity Ratio');
-      final figures = inDialog('15,000 / ');
+      final figures = inDialog('15,000.00 / ');
       expect(figures, findsOneWidget);
       expect(masked(figures), isTrue, reason: 'cash and net worth are position size');
       expect(selectable('15,000'), isFalse, reason: 'a masked amount must not be copyable out of the dialog');

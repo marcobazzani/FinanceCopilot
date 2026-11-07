@@ -90,24 +90,24 @@ void main() {
   testWidgets('shows the yearly chart figures; the ledger only splits expenses; privacy masks amounts, not percentages', (tester) async {
     await pump(tester, isPrivate: true);
     // 2025 YTD: income 2000, savings −500 → expenses 2500 (not the ledger's 99,999 inflow).
-    expect(inNode('income', '€2,000'), findsOneWidget);
-    expect(inNode('fromSavings', '€500'), findsOneWidget);
-    expect(inNode('out:3', '€1,500'), findsOneWidget);
-    expect(inNode('grp:uncategorized', '€300'), findsOneWidget, reason: 'tracked, just not classified');
+    expect(inNode('income', '€2,000.00'), findsOneWidget);
+    expect(inNode('fromSavings', '€500.00'), findsOneWidget);
+    expect(inNode('out:3', '€1,500.00'), findsOneWidget);
+    expect(inNode('grp:uncategorized', '€300.00'), findsOneWidget, reason: 'tracked, just not classified');
     expect(inNode('grp:uncategorized', 'Uncategorized'), findsOneWidget);
-    expect(inNode('grp:untracked', '€700'), findsOneWidget, reason: 'expenses 2500 − ledger (1500 + 300)');
+    expect(inNode('grp:untracked', '€700.00'), findsOneWidget, reason: 'expenses 2500 − ledger (1500 + 300)');
     expect(find.byKey(const ValueKey('sankeyNode:saved')), findsNothing);
 
     final travelShare = inNode('out:3', ' · 60.0%');
     expect(travelShare, findsOneWidget);
-    expect(masked(inNode('out:3', '€1,500')), isTrue, reason: 'position size');
+    expect(masked(inNode('out:3', '€1,500.00')), isTrue, reason: 'position size');
     expect(masked(travelShare), isFalse, reason: 'shape, not magnitude');
   });
 
   testWidgets('another year: the flows are built from that year\'s figures', (tester) async {
     await pump(tester, isPrivate: false, year: 2024);
     expect(find.byKey(const ValueKey('sankeyNode:fromSavings')), findsNothing);
-    expect(inNode('saved', '€1,000'), findsOneWidget);
+    expect(inNode('saved', '€1,000.00'), findsOneWidget);
     expect(inNode('saved', ' · 33.3%'), findsOneWidget);
     expect(find.byKey(const ValueKey('sankeyNode:grp:essential')), findsOneWidget);
     expect(find.byKey(const ValueKey('sankeyNode:grp:untracked')), findsOneWidget, reason: '2000 − 1500');
@@ -117,9 +117,9 @@ void main() {
     // 2025: ledger 1500 + 300, expenses 1000 − 500 = 500 → 1300 untracked income.
     await pump(tester, isPrivate: false, totals: const {2025: (income: 1000, savings: 500, refunds: 0)});
     expect(find.byKey(const Key('cashFlowSankey')), findsOneWidget);
-    expect(inNode('untrackedIncome', '€1,300'), findsOneWidget);
+    expect(inNode('untrackedIncome', '€1,300.00'), findsOneWidget);
     expect(inNode('untrackedIncome', 'Untracked income'), findsOneWidget);
-    expect(inNode('out:3', '€1,500'), findsOneWidget, reason: 'categories never shrunk');
+    expect(inNode('out:3', '€1,500.00'), findsOneWidget, reason: 'categories never shrunk');
     expect(find.byKey(const ValueKey('sankeyNode:grp:untracked')), findsNothing);
     expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
   });
@@ -140,12 +140,12 @@ void main() {
       ledger: [...baseTxs, tx(20, -4000, DateTime(2025, 3, 1), categoryId: 9), tx(21, -200, DateTime(2025, 3, 2), categoryId: 8)],
     );
     final line = find.byKey(const Key('sankeyTransfersExcluded'));
-    final text = find.descendant(of: line, matching: find.text('Transfers and investments not counted as expenses: €4,000'));
+    final text = find.descendant(of: line, matching: find.text('Transfers and investments not counted as expenses: €4,000.00'));
     expect(text, findsOneWidget);
     expect(masked(text), isTrue, reason: 'money moved: position size');
     expect(masked(find.byKey(const Key('spendingFootnote'))), isFalse, reason: 'explanations and counts stay readable');
     expect(find.byKey(const ValueKey('sankeyNode:out:9')), findsNothing);
-    expect(inNode('out:8', '€200'), findsOneWidget, reason: 'an outflow in a refund category is money that left');
+    expect(inNode('out:8', '€200.00'), findsOneWidget, reason: 'an outflow in a refund category is money that left');
   });
 
   testWidgets('refunds received show as their own source, masked, and tap lists exactly those rows', (tester) async {
@@ -154,7 +154,7 @@ void main() {
     addTearDown(() => cats.remove(8));
     await pump(tester, isPrivate: true, ledger: [...baseTxs, tx(30, 250, DateTime(2025, 4, 1), categoryId: 8)]);
     expect(inNode('refunds', 'Refunds received'), findsOneWidget);
-    expect(masked(inNode('refunds', '€250')), isTrue);
+    expect(masked(inNode('refunds', '€250.00')), isTrue);
     await tester.tap(find.byKey(const ValueKey('sankeyNode:refunds')));
     await tester.pumpAndSettle();
     expect(find.text('Refunds received · 2025 (1)'), findsOneWidget);

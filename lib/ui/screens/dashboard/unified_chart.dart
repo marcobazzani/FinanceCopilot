@@ -39,6 +39,20 @@ const double kChartLeftReserved = 80;
 const double kChartBottomReserved = 48;
 const double kChartRightReservedDual = 68;
 
+/// A value-axis amount on one line: shrunk to the room the axis keeps rather
+/// than wrapped, so an amount with its two decimals always reads whole.
+class _AxisLabel extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  const _AxisLabel(this.text, {required this.style});
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    child: Text(text, maxLines: 1, softWrap: false, style: style),
+  );
+}
+
 // ════════════════════════════════════════════════════
 // Zoom math helpers (file-local, unit-tested)
 // ════════════════════════════════════════════════════
@@ -199,10 +213,6 @@ class DragZoomWrapper extends StatefulWidget {
   final String baseCurrency;
   final String locale;
 
-  /// Decimal places for the drag-selection value label. Matches the wrapped
-  /// [UnifiedChart]'s valueDecimals (0 for money magnitudes, 2 for unit price).
-  final int valueDecimals;
-
   /// True when the parent has explicitly zoomed Y (rectangle zoom set
   /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
   /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
@@ -233,7 +243,6 @@ class DragZoomWrapper extends StatefulWidget {
     required this.firstDate,
     required this.baseCurrency,
     required this.locale,
-    this.valueDecimals = 0,
     required this.onZoom,
     this.rightReserved = 0,
     this.zoomedY = false,
@@ -432,7 +441,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
         final chartWidth = constraints.maxWidth - widget.leftReserved - widget.rightReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = fmt.fullDateFormat(widget.locale);
-        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: widget.valueDecimals);
+        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency));
 
         return Listener(
           behavior: HitTestBehavior.translucent,
@@ -607,11 +616,6 @@ class UnifiedChart extends StatelessWidget {
   /// false on a chart of public market data.
   final bool isPrivate;
 
-  /// Decimal places for value formatting (Y-axis labels + tooltip). 0 suits
-  /// money magnitudes (net worth in the thousands); 2 is needed for a
-  /// unit-price series so e.g. 108.57 is not rounded to "109".
-  final int valueDecimals;
-
   /// True for the immersive full-screen view, where zoom updates fire at
   /// pointer-frequency and the 150ms LineChart tween becomes the
   /// bottleneck. Skipping the tween makes pinch feel native.
@@ -631,7 +635,6 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
-    this.valueDecimals = 0,
     this.liveZoom = false,
   });
 
@@ -675,7 +678,7 @@ class UnifiedChart extends StatelessWidget {
 
     final dateFmt = fmt.monthYearFormat(language);
     final fullFmt = fmt.fullDateFormat(language);
-    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: valueDecimals);
+    final currFmt = fmt.currencyFormat(locale, symbol);
 
     // ── Dual Y-axis setup ──
     final rightVisible = visible.where((s) => s.rightAxis).toList();
@@ -785,7 +788,7 @@ class UnifiedChart extends StatelessWidget {
               // position size.
               getTitlesWidget: (scaledY, meta) => PrivacyMask(
                 isPrivate: isPrivate,
-                child: Text(currFmt.format(unscaleRight(scaledY)), style: TextStyle(fontSize: 11, color: textColor)),
+                child: _AxisLabel(currFmt.format(unscaleRight(scaledY)), style: TextStyle(fontSize: 11, color: textColor)),
               ),
             ),
           ),
@@ -813,7 +816,7 @@ class UnifiedChart extends StatelessWidget {
                 meta: meta,
                 child: PrivacyMask(
                   isPrivate: isPrivate,
-                  child: Text(currFmt.format(value), style: TextStyle(fontSize: 12, color: textColor)),
+                  child: _AxisLabel(currFmt.format(value), style: TextStyle(fontSize: 12, color: textColor)),
                 ),
               ),
             ),

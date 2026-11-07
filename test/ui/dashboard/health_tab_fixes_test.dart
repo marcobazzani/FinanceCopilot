@@ -177,7 +177,7 @@ void main() {
       }
       expect(masked(find.descendant(of: find.byType(AlertDialog), matching: find.text('6,000.00 €')).first), isTrue);
       // The figures plugged into the formula itself are masked too.
-      expect(masked(inDialog('/ 6,000 x 100')), isTrue);
+      expect(masked(inDialog('/ 6,000.00 x 100')), isTrue);
 
       // Months, percentages, labels and the symbolic formula stay readable.
       for (final readable in [

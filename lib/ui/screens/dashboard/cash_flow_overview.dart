@@ -193,7 +193,7 @@ class _OverviewPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final symbol = _cashFlowSymbol(ref);
-    final money = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final money = fmt.currencyFormat(locale, symbol);
     final title = theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant);
     final big = theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700);
     void open(_Stat stat) => Navigator.of(context).push(
@@ -647,7 +647,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
     final period = _periodOrDefault(ref.watch(_cashFlowPeriodProvider), today);
     final stats = _statsFor(ref, period, language: widget.language);
     final symbol = _cashFlowSymbol(ref);
-    final money = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 0);
+    final money = fmt.currencyFormat(widget.locale, symbol);
     final muted = theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant);
     final stat = widget.stat;
     final first = _firstMonth(available, today);
@@ -1044,7 +1044,7 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final s = ref.watch(appStringsProvider);
-    final money = fmt.currencyFormat(widget.locale, widget.symbol, decimalDigits: 0);
+    final money = fmt.currencyFormat(widget.locale, widget.symbol);
     final share = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 0);
     String shareOf(double v) => v > 0 && v < 0.005 ? '<1%' : share.format(v);
     final rows = _all ? widget.rows : widget.rows.take(_shown).toList();
@@ -1389,7 +1389,7 @@ class _FilteredRows extends ConsumerWidget {
     final byId = ref.watch(categoriesByIdProvider);
     final txs = {for (final t in ref.watch(allTransactionsProvider).value ?? const <Transaction>[]) t.id: t};
     final symbol = _cashFlowSymbol(ref);
-    final money = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final money = fmt.currencyFormat(locale, symbol);
     final date = fmt.fullDateFormat(language);
     final days = <DateTime, List<SpendingEntry>>{};
     for (final e in entries.reversed) {

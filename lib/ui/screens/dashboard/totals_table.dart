@@ -40,7 +40,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final symbol = currencySymbol(widget.allData.baseCurrency);
-    final amtFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 2);
+    final amtFmt = fmt.currencyFormat(widget.locale, symbol);
     final theme = Theme.of(context);
 
     // Compute last value and historical max (excluding last point) for each

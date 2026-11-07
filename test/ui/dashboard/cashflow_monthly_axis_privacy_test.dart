@@ -31,7 +31,7 @@ void main() {
       final labels = labelsOf(tester, tile);
       bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
       Finder label(String text) => find.descendant(of: chartOf(tile), matching: find.text(text));
-      final amounts = labels.whereType<String>().where((l) => l.endsWith(' €')).toList();
+      final amounts = labels.whereType<String>().where((l) => l.contains('€')).toList();
       expect(amounts, isNotEmpty);
       for (final amount in amounts) {
         expect(masked(label(amount)), isTrue, reason: '$amount is position size');
@@ -50,7 +50,7 @@ void main() {
       await h.openTab(tester, 'Cash Flow');
       final labels = labelsOf(tester, await h.cashFlowSection(tester, 'cfMonthByMonthTile'));
       expect(labels, isNot(contains('\u2022\u2022\u2022\u2022')));
-      expect(labels.where((l) => l != null && l.endsWith(' €')), isNotEmpty);
+      expect(labels.where((l) => l != null && l.contains('€')), isNotEmpty);
     } finally {
       await h.unmount(tester);
     }

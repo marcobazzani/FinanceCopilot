@@ -29,7 +29,7 @@ void main() {
   final fullscreen = find.byType(FullscreenChartScreen);
   Finder inFullscreen(Finder f) => find.descendant(of: fullscreen, matching: f);
   // The drag readout's second line: "€<value> – €<value>".
-  final valueRange = inFullscreen(find.textContaining(RegExp('€[0-9,]+ – €')));
+  final valueRange = inFullscreen(find.textContaining(RegExp(r'€[0-9,]+\.[0-9]{2} – €')));
 
   /// Pumps a dashboard chart card and opens its full-screen chart; returns
   /// the provider container.

@@ -181,7 +181,7 @@ void main() {
     await tester.pumpAndSettle();
     expectFootnotes(find.text(s.unpricedExcludedFromTotal(1)), count: 1);
     expectFootnotes(find.text(s.terUnknownExcluded(1)), count: 1);
-    expect(masked(find.text('€10,000').first), isTrue, reason: 'the portfolio value is position size');
+    expect(masked(find.text('€10,000.00').first), isTrue, reason: 'the portfolio value is position size');
   });
 
   group('pillars', () {
