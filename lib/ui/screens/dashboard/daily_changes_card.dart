@@ -358,7 +358,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       final hasFx = c.currency != c.baseCurrency;
                       final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
                       final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
-                      final privatePrice = unitPriceIsPrivate(c.valuationMethod);
+                      final privatePrice = unitPriceIsPrivate(c.valuationMethod, unitsAreMoney: c.unitsAreMoney);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Column(

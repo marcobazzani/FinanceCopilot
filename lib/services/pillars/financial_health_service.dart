@@ -10,6 +10,7 @@ import 'package:finance_copilot/services/pillars/health_balance_sheet.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/utils/chart_math.dart' as chart_math;
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
+import 'package:finance_copilot/utils/privacy_slots.dart';
 
 // ── Rating system ──
 
@@ -54,13 +55,12 @@ class HealthKpi {
   /// When set, the info dialog renders this rich span instead of [formula].
   final TextSpan? formulaRich;
 
-  /// An amount of money shown in place of [value] as the headline of the card.
-  /// It is position size, so privacy mode masks it.
-  final String? amountLabel;
-
-  /// A line under the name saying more about the headline: shape, not
-  /// magnitude, so privacy mode leaves it readable.
+  /// A line under the name saying more about the headline. Its words are
+  /// shape, not magnitude, so privacy mode leaves them readable; the amounts
+  /// it quotes — [subtitleFigures], at its [privacySlot] markers — are
+  /// position size, and blur.
   final String? subtitle;
+  final List<String> subtitleFigures;
 
   /// Whether the figures in [formula] are position size, masked in privacy mode
   /// below the symbolic first line. False when they are only percentages.
@@ -74,8 +74,8 @@ class HealthKpi {
     this.description = '',
     this.formula = '',
     this.formulaRich,
-    this.amountLabel,
     this.subtitle,
+    this.subtitleFigures = const [],
     this.formulaFiguresPrivate = true,
   });
 }
@@ -386,20 +386,22 @@ String fireDescription(Rating rating, AppStrings s) => switch (rating) {
   _ => s.kpiFireDescScarso,
 };
 
-/// The FIRE number card: the number as the headline (an amount, masked in
-/// privacy mode), rated on how much of it the investable net worth covers. N/A
-/// without a FIRE number. [money] spells an amount with its currency.
-HealthKpi fireKpi({required FireResult fire, required AppStrings s, required NumberFormat pctFmt, required String Function(double) money}) {
+/// The FIRE number card: how much of the number the investable net worth
+/// covers as the headline (a percentage, readable in privacy mode), rated on
+/// it, and the number itself — the target — on the line under the name (an
+/// amount, masked). N/A without a FIRE number. [money] spells an amount with
+/// its currency.
+HealthKpi fireKpi({required FireResult fire, required AppStrings s, required String Function(double) money}) {
   if (fire.insufficientData) {
     return HealthKpi(name: s.kpiFireNumber, description: s.kpiFireInsufficientData());
   }
   return HealthKpi(
     name: s.kpiFireNumber,
-    value: fire.fiNumber,
+    value: fire.progressPct,
     rating: fire.rating,
     description: fireDescription(fire.rating, s),
-    amountLabel: money(fire.fiNumber),
-    subtitle: s.kpiFireReached('${pctFmt.format(fire.progressPct)}%'),
+    subtitle: s.kpiFireTarget(privacySlot(0)),
+    subtitleFigures: [money(fire.fiNumber)],
   );
 }
 

@@ -74,7 +74,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
     // From the live row: the first revaluation turns a market-priced asset
     // into a manually valued one while this screen is open.
     final valuation = ref.watch(assetsProvider).value?.where((a) => a.id == asset.id).firstOrNull?.valuationMethod ?? asset.valuationMethod;
-    final privatePrice = unitPriceIsPrivate(valuation);
+    final privatePrice = unitPriceIsPrivate(valuation, unitsAreMoney: ref.watch(assetStatsProvider).value?[asset.id]?.unitsAreMoney ?? false);
 
     return ListenableBuilder(
       listenable: _selection,

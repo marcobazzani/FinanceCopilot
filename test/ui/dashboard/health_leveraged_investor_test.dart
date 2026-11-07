@@ -2,8 +2,9 @@
 // a credit line, a money-market ETF and an equity ETF. The credit line is money
 // that can be borrowed, not wealth: it is in no ratio but its own usage; the
 // money-market fund is cash; what is owed has its own category; the score is
-// the mean of the categories; and in privacy mode the FIRE number is hidden
-// while every percentage stays readable.
+// the mean of the categories; the FIRE card heads with how much of the number
+// is reached; and in privacy mode the FIRE number is hidden while every
+// percentage stays readable.
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -156,13 +157,13 @@ void main() {
     }
   });
 
-  testWidgets('the FIRE number is the headline, its progress the line under the name', (tester) async {
+  testWidgets('the progress is the headline, the FIRE number the target under the name', (tester) async {
     await seedLeveraged();
     await h.pump(tester);
     try {
       // Expenses of 36,000 a year over a 2.75% withdrawal rate; 82,000 of investable net worth covers 6.26% of it.
-      expect(inKpi(s.kpiFireNumber, '1,309,091 €'), findsOneWidget);
-      expect(inKpi(s.kpiFireNumber, '6.26% reached'), findsOneWidget);
+      expect(inKpi(s.kpiFireNumber, '6.26%'), findsOneWidget);
+      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,309,091 €')), findsOneWidget);
       expect(inKpi(s.kpiFireNumber, s.ratingScarso), findsOneWidget);
       expect(find.text('FI Target Progress'), findsNothing);
     } finally {
@@ -175,7 +176,7 @@ void main() {
     await h.pump(tester, isPrivate: true);
     try {
       expect(masked(inKpi(s.kpiFireNumber, '1,309,091 €')), isTrue, reason: 'an amount is position size');
-      expect(masked(inKpi(s.kpiFireNumber, '6.26% reached')), isFalse, reason: 'a percentage is shape');
+      expect(masked(inKpi(s.kpiFireNumber, '6.26%')), isFalse, reason: 'a percentage is shape');
       for (final (kpi, value) in [
         (s.kpiLiquidityRatio, '39.02%'),
         (s.kpiInvestmentWeight, '98.21%'),

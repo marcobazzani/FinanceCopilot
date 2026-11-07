@@ -334,6 +334,10 @@ class AssetDailyChange {
   /// its "price" is the user's own revaluation per unit held.
   final ValuationMethod valuationMethod;
 
+  /// Whether the units held are the money put in (see
+  /// `AssetStats.unitsAreMoney`): the price is then a growth index.
+  final bool unitsAreMoney;
+
   const AssetDailyChange({
     required this.name,
     this.ticker,
@@ -348,6 +352,7 @@ class AssetDailyChange {
     this.priceDivisor = 1.0,
     this.marketOpen = false,
     this.valuationMethod = ValuationMethod.marketPrice,
+    this.unitsAreMoney = false,
   });
 
   double get priceDiff => todayPrice - previousPrice;
@@ -467,6 +472,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
         priceDivisor: bondPriceDivisor(asset.instrumentType),
         marketOpen: isMarketOpen,
         valuationMethod: asset.valuationMethod,
+        unitsAreMoney: stat.unitsAreMoney,
       ),
     );
   }

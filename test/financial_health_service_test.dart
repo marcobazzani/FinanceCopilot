@@ -8,6 +8,7 @@ import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/services/pillars/financial_health_service.dart';
 import 'package:finance_copilot/services/pillars/health_balance_sheet.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
+import 'package:finance_copilot/utils/privacy_slots.dart';
 
 Asset _asset(int id, InstrumentType type, {String? ticker}) => Asset(
   id: id,
@@ -672,7 +673,7 @@ void main() {
     test('the leveraged investor scores Good, with every category weighing the same', () {
       var c = kpis(sheet: leveraged, annualIncome: 80000, annualSavings: 33000, rollingIncome: 90000, estimatedAnnualExpenses: 48000);
       final fire = computeFire(netWorth: leveraged.investableNetWorth, annualExpenses: 48000, swrPct: 2.75);
-      final fireCard = fireKpi(fire: fire, s: s, pctFmt: NumberFormat('0.00', locale), money: (v) => '${v.round()} €');
+      final fireCard = fireKpi(fire: fire, s: s, money: (v) => '${v.round()} €');
       c = [
         for (final cat in c)
           if (cat.name == s.healthCatWealth) KpiCategory(name: cat.name, kpis: [...cat.kpis, fireCard]) else cat,
@@ -743,22 +744,21 @@ void main() {
 
   group('fireKpi: the FIRE number card', () {
     String money(double v) => '${NumberFormat.decimalPattern(locale).format(v.round())} €';
-    final pct = NumberFormat('0.00', locale);
 
-    test('the headline is the FIRE number, an amount; the progress is the subtitle', () {
+    test('the headline is the progress, a percentage; the FIRE number is the target under the name, its amount masked', () {
       final fire = computeFire(netWorth: 800000, annualExpenses: 48000, swrPct: 2.75);
-      final kpi = fireKpi(fire: fire, s: s, pctFmt: pct, money: money);
+      final kpi = fireKpi(fire: fire, s: s, money: money);
       expect(kpi.name, 'FIRE number');
-      expect(kpi.amountLabel, '1,745,455 €');
-      expect(kpi.subtitle, '45.83% reached');
-      expect(kpi.value, closeTo(1745454.55, 0.01));
+      expect(kpi.value, closeTo(45.83, 0.01));
+      expect(kpi.unit, '%');
+      expect(kpi.subtitle, s.kpiFireTarget(privacySlot(0)), reason: 'the words readable, the amount in a slot');
+      expect(kpi.subtitleFigures, ['1,745,455 €']);
     });
 
     test('it is rated on the progress, not on the amount', () {
       Rating at(double netWorth) => fireKpi(
         fire: computeFire(netWorth: netWorth, annualExpenses: 30000, swrPct: 2.75),
         s: s,
-        pctFmt: pct,
         money: money,
       ).rating;
       final number = 30000 / 0.0275;
@@ -769,9 +769,9 @@ void main() {
     });
 
     test('without expenses there is no FIRE number: N/A with the reason, no amount', () {
-      final kpi = fireKpi(fire: computeFire(netWorth: 810000, annualExpenses: 0, swrPct: 2.75), s: s, pctFmt: pct, money: money);
+      final kpi = fireKpi(fire: computeFire(netWorth: 810000, annualExpenses: 0, swrPct: 2.75), s: s, money: money);
       expect(kpi.value, isNull);
-      expect(kpi.amountLabel, isNull);
+      expect(kpi.subtitleFigures, isEmpty);
       expect(kpi.subtitle, isNull);
       expect(kpi.rating, Rating.na);
       expect(kpi.description, s.kpiFireInsufficientData());

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
@@ -124,5 +125,14 @@ void main() {
   test('a unit price is private only when the asset is not market-priced', () {
     expect(unitPriceIsPrivate(ValuationMethod.marketPrice), isFalse);
     expect(unitPriceIsPrivate(ValuationMethod.eventDriven), isTrue);
+  });
+
+  test('a manually valued asset counted in the money put in has a readable price: a growth index', () {
+    expect(unitPriceIsPrivate(ValuationMethod.eventDriven, unitsAreMoney: true), isFalse);
+    // 55,189.61 euros put in, a unit each.
+    expect(const AssetStats(eventCount: 121, totalInvested: 55189.61, totalQuantity: 55189.61).unitsAreMoney, isTrue);
+    // A house: one unit, its price the whole value.
+    expect(const AssetStats(eventCount: 1, totalInvested: 250000, totalQuantity: 1).unitsAreMoney, isFalse);
+    expect(const AssetStats(eventCount: 0).unitsAreMoney, isFalse, reason: 'nothing held');
   });
 }

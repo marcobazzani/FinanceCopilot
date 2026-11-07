@@ -117,7 +117,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         final currency = currencySymbol(allData?.baseCurrency ?? ieData?.baseCurrency ?? '');
         final fireCard = sheet == null
             ? HealthKpi(name: s.kpiFireNumber, description: s.noData)
-            : fireKpi(fire: fire, s: s, pctFmt: pctFmt, money: (amount) => '${moneyFmt.format(amount.round())} $currency');
+            : fireKpi(fire: fire, s: s, money: (amount) => '${moneyFmt.format(amount.round())} $currency');
         categories = [
           for (final cat in categories)
             if (cat.name == s.healthCatWealth) KpiCategory(name: cat.name, kpis: [...cat.kpis, fireCard]) else cat,
@@ -488,9 +488,8 @@ class _KpiCardState extends State<_KpiCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  // An amount of money is position size; a percentage, a count
-                  // of months or an index is not.
-                  child: kpi.amountLabel != null ? PrivacyText(kpi.amountLabel!, style: valueStyle) : Text(valueText, style: valueStyle),
+                  // A percentage, a count of months or an index: shape, not size.
+                  child: Text(valueText, style: valueStyle),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -509,7 +508,13 @@ class _KpiCardState extends State<_KpiCard> {
             const SizedBox(height: 4),
             // KPI name
             Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
-            if (kpi.subtitle case final subtitle?) Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+            // Its words readable, the amounts it quotes masked.
+            if (kpi.subtitle case final subtitle?)
+              PrivacySentence(
+                subtitle,
+                figures: kpi.subtitleFigures,
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+              ),
             if (widget.footnote case final footnote?) ...[
               const SizedBox(height: 2),
               Footnote(footnote),

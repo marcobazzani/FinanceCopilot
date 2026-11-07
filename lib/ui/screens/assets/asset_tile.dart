@@ -201,9 +201,12 @@ class _AssetTile extends ConsumerWidget {
 
   /// The unit price of the `price × quantity` line. A manually valued asset
   /// has no public price: its unit price is its own revaluation per unit —
-  /// position size — so it is masked like the quantity.
+  /// position size — so it is masked like the quantity, unless its units are
+  /// the money put in (a growth index then).
   InlineSpan _unitPriceSpan(String price, TextStyle? style) =>
-      unitPriceIsPrivate(asset.valuationMethod) ? privacyFigureSpan(price, style: style) : TextSpan(text: price, style: style);
+      unitPriceIsPrivate(asset.valuationMethod, unitsAreMoney: stats?.unitsAreMoney ?? false)
+      ? privacyFigureSpan(price, style: style)
+      : TextSpan(text: price, style: style);
 
   /// Why the value is missing: no price or exchange rate.
   Widget _buildNoMarketDataBadge(ThemeData theme) => _mark(

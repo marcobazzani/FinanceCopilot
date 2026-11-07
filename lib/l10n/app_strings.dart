@@ -398,7 +398,7 @@ class AppStrings {
   String get fireAssetsLabel => _it ? 'Patrimonio investibile' : 'Investable net worth';
   String get fireGapLabel => _it ? 'Ancora da raggiungere' : 'Still to go';
   String get fireProgressLabel => _it ? 'Copertura target' : 'Target coverage';
-  String kpiFireReached(String pct) => _it ? '$pct raggiunto' : '$pct reached';
+  String kpiFireTarget(String amount) => _it ? 'Obiettivo: $amount' : 'Target: $amount';
   String get fireResetDefault => _it ? 'Ripristina predefinito' : 'Reset default';
   String get fireSwrInvalid => _it ? 'Inserisci un numero positivo' : 'Enter a positive number';
   String get fireExpensesEstimateLabel => _it ? 'Spese annue stimate' : 'Estimated annual expenses';

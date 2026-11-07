@@ -271,6 +271,57 @@ void main() {
     }
   });
 
+  testWidgets('Price Changes: a pension fund counted in the euros put in shows its price, a growth index; the house\'s stays masked', (
+    tester,
+  ) async {
+    await seed();
+    final provider = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Pension provider'));
+    final pension = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.stockEtf,
+            instrumentType: const Value(InstrumentType.pension),
+            valuationMethod: ValuationMethod.eventDriven,
+            intermediaryId: provider,
+          ),
+        );
+    // Each contribution buys as many units as euros; the fund grew 7% since.
+    for (final day in [DateTime(2024, 12, 10), DateTime(2025, 6, 10)]) {
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: pension,
+              date: day,
+              valueDate: day,
+              type: EventType.buy,
+              amount: 1000,
+              quantity: const Value(1000),
+              price: const Value(1),
+            ),
+          );
+    }
+    for (final (day, price) in [(DateTime(2024, 12, 10), 1.0), (DateTime(2026, 3, 1), 1.07)]) {
+      await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(assetId: pension, date: day, closePrice: price, currency: 'EUR'));
+    }
+    await pumpDashboard(tester);
+    try {
+      await tester.tap(find.widgetWithText(Tab, 'History'));
+      await settle(tester);
+      final card = find.ancestor(of: find.text('Price Changes'), matching: find.byType(Card));
+      Finder inCard(String text) => find.descendant(of: card, matching: find.text(text));
+      await pumpUntilFound(tester, inCard('1.07'));
+
+      await setPrivate(tester, true);
+      expect(masked(inCard('1.07')), isFalse, reason: 'what each euro put in is worth now: the same for any size of holding');
+      expect(masked(inCard('250,000.00')), isTrue, reason: 'one unit of a manually valued house: its "price" is the position value');
+    } finally {
+      await unmount(tester);
+    }
+  });
+
   testWidgets('Price Changes: a manually valued asset\'s unit price is masked, a listed fund\'s price stays readable', (tester) async {
     await seed();
     await pumpDashboard(tester);

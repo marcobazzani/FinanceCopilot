@@ -43,6 +43,12 @@ class AssetStats {
     this.totalInvested = 0,
     this.totalQuantity = 0,
   });
+
+  /// Whether the units held are the money put in: every unit bought at 1, as
+  /// pension contributions are recorded. A unit price is then what each unit
+  /// of money put in is worth now — a growth index, the same for any size of
+  /// holding.
+  bool get unitsAreMoney => totalQuantity > 0 && (totalInvested / totalQuantity - 1).abs() < 1e-6;
 }
 
 class AssetService {
