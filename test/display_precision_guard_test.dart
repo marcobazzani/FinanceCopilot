@@ -20,11 +20,13 @@ void main() {
     final hits = <String>[];
     final files = Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'));
     for (final file in files) {
-      final formatters = file.path == 'lib/utils/formatters.dart';
+      // One spelling of the path on every platform: Windows lists lib\utils\….
+      final path = file.path.replaceAll(r'\', '/');
+      final formatters = path == 'lib/utils/formatters.dart';
       for (final (i, line) in file.readAsLinesSync().indexed) {
         for (final MapEntry(key: why, value: rule) in rules.entries) {
           if (formatters && rule == rules.values.first) continue;
-          if (rule.hasMatch(line)) hits.add('${file.path}:${i + 1}: $why: ${line.trim()}');
+          if (rule.hasMatch(line)) hits.add('$path:${i + 1}: $why: ${line.trim()}');
         }
       }
     }
