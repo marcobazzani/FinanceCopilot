@@ -7,13 +7,10 @@ part of 'dashboard_screen.dart';
 /// A run of days, both ends included.
 typedef _Days = DayRange;
 
-/// One part of a period: a day, a month or a year of it, with its income.
-/// [future]: it has not started yet.
-typedef _Bucket = ({String label, DateTime start, DateTime end, double income, bool future});
-
-/// The period, or one of the four before it, with what it had: so far, for
-/// the period itself.
-typedef _TrailBar = ({CashFlowPeriod period, String label, double income, double expenses, double savings, bool current});
+/// One part of a period — a day, a week, a month or a year of it (see
+/// [periodBuckets]) — with its income, expenses and savings so far, counted
+/// as the period's are. [future]: it has not started yet.
+typedef _Part = ({String label, DateTime start, DateTime end, double income, double expenses, double savings, bool future});
 
 /// The period shown when none is picked: this month.
 CashFlowPeriod _periodOrDefault(CashFlowPeriod? picked, DateTime today) => picked ?? CashFlowPeriod.thisMonth(today);
@@ -184,6 +181,9 @@ class _PeriodStats {
   final String? vsLabel;
   final List<String> notes;
 
+  /// The first day of the period it is compared with; null without one.
+  final DateTime? otherStart;
+
   /// Running totals, one figure a day: the period's so far, the other
   /// period's whole.
   final List<double> expensesRun;
@@ -191,13 +191,13 @@ class _PeriodStats {
   final List<double>? expensesRunBefore;
   final List<double>? incomeRunBefore;
 
-  /// The period's days or months (what its income list is made of).
-  final List<_Bucket> buckets;
-
-  /// The period and the four before it ([trailOf]): the bars of the Income and
-  /// Savings cards, and of the screens' bar charts.
-  final List<_TrailBar> trail;
+  /// The period's parts: the bars of the Income card and of the screens, and
+  /// the months its income list is made of.
+  final List<_Part> parts;
   final List<ChartTick> ticks;
+
+  /// The parts begun, today's included: what an average per part divides by.
+  int get partsBegun => parts.where((p) => !p.future).length;
 
   /// What the period spent, per category, merchant and saving plan.
   final SpendingPeriod spending;
@@ -221,12 +221,12 @@ class _PeriodStats {
     required this.savingsVs,
     required this.vsLabel,
     required this.notes,
+    required this.otherStart,
     required this.expensesRun,
     required this.incomeRun,
     required this.expensesRunBefore,
     required this.incomeRunBefore,
-    required this.buckets,
-    required this.trail,
+    required this.parts,
     required this.ticks,
     required this.spending,
     required this.incomeRecords,
@@ -324,32 +324,27 @@ class _PeriodStats {
       }
     }
     final otherDays = other == null || other.start == null ? null : (start: other.start!, end: other.end!);
-    final buckets = [
+    final parts = <_Part>[
       for (final b in periodBuckets(period, start, end))
         () {
           final future = b.start.isAfter(day);
-          final to = b.end.isAfter(incomeTo) ? incomeTo : b.end;
+          final to = b.end.isAfter(day) ? day : b.end;
+          final f = future || ieData == null
+              ? nothing
+              : _figuresBetween(ieData, b.start, to, incomeTo: b.end.isAfter(incomeTo) ? incomeTo : b.end);
           return (
-            label: '',
+            label: bucketLabel(period, b, language),
             start: b.start,
             end: b.end,
-            income: future || to.isBefore(b.start) ? 0.0 : _sumOf(incomeIn(b.start, to)),
+            income: f.income,
+            expenses: f.expenses,
+            savings: f.savings,
             future: future,
           );
         }(),
     ];
     final ticks = chartTicks(period, start, end, language);
     final totals = started ? figures(start, until, periodEnd: end) : nothing;
-    final trail = [
-      for (final p in trailOf(period))
-        () {
-          final (a, b) = (p.start ?? start, p.end ?? until);
-          final to = b.isAfter(day) ? day : b;
-          final began = !a.isAfter(to);
-          final f = began ? figures(a, to, periodEnd: b) : nothing;
-          return (period: p, label: shortLabel(p, language), income: f.income, expenses: f.expenses, savings: f.savings, current: p == period);
-        }(),
-    ];
     return _PeriodStats(
       period: period,
       label: period.label(s, language, today),
@@ -368,16 +363,14 @@ class _PeriodStats {
       savingsVs: savingsVs,
       vsLabel: vsLabel,
       notes: notes,
+      otherStart: vsLabel == null ? null : otherDays?.start,
       expensesRun: started && ieData != null ? _expensesRunning(ieData, start, until) : const [],
       incomeRun: started && ieData != null ? _incomeRunning(ieData, start, until) : const [],
       expensesRunBefore: vsLabel == null || otherDays == null || ieData == null
           ? null
           : _expensesRunning(ieData, otherDays.start, otherDays.end),
       incomeRunBefore: vsLabel == null || otherDays == null || ieData == null ? null : _incomeRunning(ieData, otherDays.start, otherDays.end),
-      buckets: [
-        for (final b in buckets) (label: bucketLabel(period, b.start, language), start: b.start, end: b.end, income: b.income, future: b.future),
-      ],
-      trail: trail,
+      parts: parts,
       ticks: ticks,
       spending: started && spending != null ? spending.sumOfDays(start, until) : SpendingPeriod.none,
       incomeRecords: started ? incomeIn(start, incomeTo) : const [],

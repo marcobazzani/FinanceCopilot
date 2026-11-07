@@ -195,8 +195,8 @@ class _OverviewPage extends ConsumerWidget {
         ),
       ),
     );
-    // The income bars: this period and the four before it, as its screen shows them.
-    final incomeBars = [for (final t in stats.trail) (label: t.label, value: t.income, current: t.current)];
+    // The income bars: the parts of the period, as its screen shows them.
+    final incomeBars = [for (final p in stats.parts) (value: p.income, future: p.future)];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -587,6 +587,28 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
   /// Expenses opens on its card's running total, Income and Savings on bars.
   late _ChartMode _mode = widget.stat == _Stat.expenses ? _ChartMode.running : _ChartMode.bars;
 
+  /// The bar picked and the period it is a part of; null: the whole period.
+  ({CashFlowPeriod period, int index})? _picked;
+
+  /// The bars of [stats]: its parts; on Savings a pair per month of it, or
+  /// the period itself when it is a month or shorter.
+  List<_Part> _barsOf(_PeriodStats stats) {
+    if (widget.stat != _Stat.savings) return stats.parts;
+    final span = partSpanOf(stats.period);
+    if (span == CashFlowPartSpan.month || span == CashFlowPartSpan.year) return stats.parts;
+    return [
+      (
+        label: shortLabel(stats.period, widget.language),
+        start: stats.start,
+        end: stats.end,
+        income: stats.income,
+        expenses: stats.expenses,
+        savings: stats.savings,
+        future: false,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -602,21 +624,46 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
     final money = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 0);
     final muted = theme.textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant);
     final stat = widget.stat;
-    final (title, value, change, upIsGood) = switch (stat) {
-      _Stat.expenses => (s.legendExpenses, stats.expenses, stats.expensesVs, false),
-      _Stat.income => (s.legendIncome, stats.income, stats.incomeVs, true),
-      _Stat.savings => (s.legendSavings, stats.savings, stats.savingsVs, true),
-    };
     final first = _firstMonth(available, today);
     final byId = ref.watch(categoriesByIdProvider);
+
+    // A bar picked shows its part: its figure, its lists, against the
+    // period's average part.
+    final bars = _barsOf(stats);
+    final picked = _picked?.period == period ? _picked!.index : null;
+    final part = picked == null || picked >= bars.length ? null : bars[picked];
+    final partPeriod = part == null ? null : CashFlowPeriod.fromDays(part.start, part.end);
+    final shown = partPeriod == null ? stats : _statsFor(ref, partPeriod, language: widget.language);
+    void pick(int i) {
+      if (i >= bars.length || bars[i].future) return;
+      setState(() => _picked = picked == i ? null : (period: period, index: i));
+    }
+
+    void step(int by) {
+      if (period.canStep(by, first, today)) _showPeriod(ref, period.shifted(by));
+    }
+
+    final (title, value, change, upIsGood, whole) = switch (stat) {
+      _Stat.expenses => (s.legendExpenses, shown.expenses, stats.expensesVs, false, stats.expenses),
+      _Stat.income => (s.legendIncome, shown.income, stats.incomeVs, true, stats.income),
+      _Stat.savings => (s.legendSavings, shown.savings, stats.savingsVs, true, stats.savings),
+    };
+    final average = part == null || stats.partsBegun == 0 ? null : whole / stats.partsBegun;
+    String averageOf(String amount) => switch (partSpanOf(period)) {
+      CashFlowPartSpan.day => s.cfAveragePerDay(amount),
+      CashFlowPartSpan.week => s.cfAveragePerWeek(amount),
+      CashFlowPartSpan.month => s.cfAveragePerMonth(amount),
+      CashFlowPartSpan.year => s.cfAveragePerYear(amount),
+    };
 
     Widget chart() {
       if (stat == _Stat.savings) {
         return _BarsChart(
-          bars: [for (final t in stats.trail) (label: t.label, a: t.income, b: t.expenses, highlight: t.current)],
+          bars: [for (final (i, b) in bars.indexed) (label: b.label, a: b.income, b: b.expenses, highlight: picked == null || picked == i)],
           color: scheme.primary,
           locale: widget.locale,
           symbol: symbol,
+          onTap: pick,
         );
       }
       final spent = stat == _Stat.expenses;
@@ -630,12 +677,23 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
           detailed: true,
           locale: widget.locale,
           symbol: symbol,
+          title: title,
+          upIsGood: upIsGood,
+          start: stats.start,
+          otherStart: stats.otherStart,
+          language: widget.language,
         ),
         _ChartMode.bars => _BarsChart(
-          bars: [for (final t in stats.trail) (label: t.label, a: spent ? t.expenses : t.income, b: null, highlight: t.current)],
+          bars: [
+            for (final (i, b) in bars.indexed)
+              (label: b.label, a: spent ? b.expenses : b.income, b: null, highlight: picked == null || picked == i),
+          ],
           color: spent ? scheme.error : Colors.blue.shade400,
           locale: widget.locale,
           symbol: symbol,
+          onTap: pick,
+          // The average part, against the one picked.
+          average: spent ? average : null,
         ),
         _ChartMode.ring => _RingChart(
           slices: [
@@ -653,7 +711,14 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
           if (stat != _Stat.savings)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: _ModeToggle(mode: _mode, ring: stat == _Stat.expenses, onChanged: (m) => setState(() => _mode = m)),
+              child: _ModeToggle(
+                mode: _mode,
+                ring: stat == _Stat.expenses,
+                onChanged: (m) => setState(() {
+                  _mode = m;
+                  _picked = null;
+                }),
+              ),
             ),
         ],
       ),
@@ -707,12 +772,30 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: 10,
                 children: [
-                  _InOutAmount(icon: Icons.add_circle, color: Colors.green.shade500, text: money.format(stats.income)),
-                  _InOutAmount(icon: Icons.remove_circle, color: scheme.error, text: money.format(stats.expenses)),
+                  _InOutAmount(icon: Icons.add_circle, color: Colors.green.shade500, text: money.format(shown.income)),
+                  _InOutAmount(icon: Icons.remove_circle, color: scheme.error, text: money.format(shown.expenses)),
+                  if (partPeriod != null) Text('· ${partPeriod.label(s, widget.language, today)}', style: muted),
                 ],
               ),
             ),
-          if (change != null)
+          // A part picked: the average part and which it is; else the change.
+          if (partPeriod != null && stat != _Stat.savings)
+            Wrap(
+              key: const Key('cfStatAverage'),
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              children: [
+                Icon(Icons.bar_chart, size: 18, color: scheme.primary),
+                if (average != null)
+                  PrivacySentence(
+                    averageOf(privacySlot(0)),
+                    figures: [money.format(average)],
+                    style: theme.textTheme.bodyLarge?.copyWith(color: scheme.primary),
+                  ),
+                Text('· ${partPeriod.label(s, widget.language, today)}', style: muted),
+              ],
+            )
+          else if (change != null && partPeriod == null)
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
               spacing: 8,
@@ -722,10 +805,20 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
               ],
             ),
           const SizedBox(height: 20),
-          SizedBox(height: 240, child: chart()),
+          // A swipe on the bars or the ring goes to the period before or after.
+          GestureDetector(
+            key: const Key('cfStatChart'),
+            onHorizontalDragEnd: _mode == _ChartMode.running && stat != _Stat.savings
+                ? null
+                : (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    if (v.abs() >= 200) step(v < 0 ? 1 : -1);
+                  },
+            child: SizedBox(height: 240, child: chart()),
+          ),
           const SizedBox(height: 20),
           _SpanSelector(period: period, available: available),
-          if (stats.notes.isNotEmpty)
+          if (stats.notes.isNotEmpty && partPeriod == null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(stats.notes.join('\n'), style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
@@ -733,16 +826,16 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
           const SizedBox(height: 24),
           if (spending != null)
             switch (stat) {
-              _Stat.expenses => _SpentList(spending: spending, stats: stats, locale: widget.locale, language: widget.language),
-              _Stat.income => _IncomeList(stats: stats, locale: widget.locale, language: widget.language),
+              _Stat.expenses => _SpentList(spending: spending, stats: shown, locale: widget.locale, language: widget.language),
+              _Stat.income => _IncomeList(stats: shown, locale: widget.locale, language: widget.language),
               _Stat.savings => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _SectionTitle(title: s.legendIncome, amount: '+${money.format(stats.income)}'),
-                  _IncomeList(stats: stats, locale: widget.locale, language: widget.language, titled: false),
+                  _SectionTitle(title: s.legendIncome, amount: '+${money.format(shown.income)}'),
+                  _IncomeList(stats: shown, locale: widget.locale, language: widget.language, titled: false),
                   const SizedBox(height: 24),
-                  _SectionTitle(title: s.legendExpenses, amount: '−${money.format(stats.expenses)}'),
-                  _SpentList(spending: spending, stats: stats, locale: widget.locale, language: widget.language, titled: false),
+                  _SectionTitle(title: s.legendExpenses, amount: '−${money.format(shown.expenses)}'),
+                  _SpentList(spending: spending, stats: shown, locale: widget.locale, language: widget.language, titled: false),
                 ],
               ),
             },
@@ -1125,7 +1218,7 @@ class _IncomeList extends ConsumerWidget {
             onTap: null,
           )
       else
-        for (final b in stats.buckets)
+        for (final b in stats.parts)
           if (b.income > 0)
             () {
               final records = stats.incomeRecords.where((r) => !dayOf(r.date).isBefore(b.start) && !dayOf(r.date).isAfter(b.end)).length;

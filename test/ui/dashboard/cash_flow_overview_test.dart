@@ -12,6 +12,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
+import 'package:finance_copilot/ui/widgets/privacy_text.dart' show PrivacySentence;
 import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
 import 'package:finance_copilot/ui/screens/classification/categories_rules_screen.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
@@ -228,18 +229,31 @@ void main() {
       }
     });
 
-    testWidgets('the Income card names its bars, and its screen opens on the same bars', (tester) async {
+    testWidgets('the Income card\'s bars are the parts of the period, as on its screen: the weeks of a month, the months of a year', (
+      tester,
+    ) async {
       await seed();
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        for (final month in ['Nov', 'Dec', 'Jan', 'Feb', 'Mar']) {
-          expect(inKey('cfIncomeCard', month), findsOneWidget);
-        }
+        // The fill of each bar, to its share of the biggest.
+        List<double> fills() => [
+          for (final c in tester.widgetList<AnimatedContainer>(
+            find.descendant(of: find.byKey(const Key('cfIncomeCard')), matching: find.byType(AnimatedContainer)),
+          ))
+            c.constraints!.maxHeight,
+        ];
+        expect(fills().length, 5, reason: 'the weeks of March: 1–7 to 29–31');
+        expect(fills().every((h) => h == 0), isTrue, reason: 'no salary yet in March');
+        await span(tester, 'year');
+        final year = fills();
+        expect(year.length, 12, reason: 'the months of 2026');
+        expect(year[0], greaterThan(0));
+        expect(year[1], year[0], reason: 'two salaries alike');
+        expect(year.skip(2).every((h) => h == 0), isTrue);
         await tap(tester, find.byKey(const Key('cfIncomeCard')));
-        final chart = tester.widget<BarChart>(find.byType(BarChart));
-        expect(chart.data.barGroups.length, 5, reason: 'November to March, as on the card');
-        expect(chart.data.barGroups[3].barRods.single.toY, 3000, reason: 'February: one salary');
+        final bars = tester.widget<BarChart>(find.byType(BarChart)).data.barGroups;
+        expect([for (final g in bars) g.barRods.single.toY], [3000, 3000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       } finally {
         await h.unmount(tester);
       }
@@ -526,20 +540,36 @@ void main() {
       }
     });
 
-    testWidgets('on a screen, a point or a bar tells its amount, in short', (tester) async {
+    testWidgets('touching the line tells, for that day, the total so far and the same day of the other period, and how far apart', (
+      tester,
+    ) async {
       await seed();
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
         await tap(tester, find.byKey(const Key('cfExpensesCard')));
         final line = tester.widget<LineChart>(find.byType(LineChart)).data;
-        final today = line.lineBarsData.last;
-        final point = line.lineTouchData.touchTooltipData.getTooltipItems([LineBarSpot(today, line.lineBarsData.length - 1, today.spots.last)]);
-        expect(point.single!.text, '120 €', reason: 'spent by 10 March');
-        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
-        final bars = tester.widget<BarChart>(find.byType(BarChart)).data;
-        final march = bars.barGroups.last;
-        expect(bars.barTouchData.touchTooltipData.getTooltipItem(march, march.x, march.barRods.single, 0)!.text, '120 €');
+        final spots = [for (final (i, bar) in line.lineBarsData.indexed) LineBarSpot(bar, i, bar.spots[9])];
+        final box = line.lineTouchData.touchTooltipData.getTooltipItems(spots);
+        expect(box.where((b) => b != null).length, 1, reason: 'one box for both lines');
+        expect(box.first!.text, s.legendExpenses);
+        expect(
+          box.first!.children!.map((c) => c.text).join(),
+          ' ▼ ${money.format(100)}\nMar 10  ${money.format(120)}\nFeb 10  ${money.format(220)}',
+          reason: '120 spent by 10 March, 220 by 10 February',
+        );
+        // A year against a year: the same day reads alike, the years tell them apart.
+        await tester.pageBack();
+        await h.settle(tester);
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        final year = tester.widget<LineChart>(find.byType(LineChart)).data;
+        final yearBox = year.lineTouchData.touchTooltipData.getTooltipItems([
+          for (final (i, bar) in year.lineBarsData.indexed) LineBarSpot(bar, i, bar.spots[9]),
+        ]);
+        final rows = yearBox.first!.children!.map((c) => c.text).join();
+        expect(rows, contains('Jan 10, 2026'));
+        expect(rows, contains('Jan 10, 2025'));
       } finally {
         await h.unmount(tester);
       }
@@ -563,18 +593,101 @@ void main() {
       }
     });
 
-    testWidgets('each bar counts its own period\'s income: a salary recorded for Sunday is this week\'s, not the weeks before', (tester) async {
+    testWidgets('a week\'s bars are its days: the salary of Sunday 15 February on its day', (tester) async {
       await seed();
-      final sunday = DateTime(2026, 3, 15);
-      await h.db.into(h.db.incomes).insert(IncomesCompanion.insert(date: sunday, valueDate: sunday, amount: 3000));
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'week');
         await tap(tester, find.byKey(const Key('cfIncomeCard')));
+        for (var i = 0; i < 4; i++) {
+          await tap(tester, find.byTooltip(s.cfPreviousPeriodTooltip));
+        }
+        expect(screenTitle(tester), '${s.legendIncome} · Feb 9 – Feb 15 2026');
         final bars = tester.widget<BarChart>(find.byType(BarChart)).data.barGroups;
-        // 9–15 February (the salary of the 15th), the three weeks after it, then this week.
-        expect([for (final g in bars) g.barRods.single.toY], [3000, 0, 0, 0, 3000]);
+        expect([for (final g in bars) g.barRods.single.toY], [0, 0, 0, 0, 0, 0, 3000]);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a bar tapped shows its part — its figure, its list — against the period\'s average part; tapped again, the whole period', (
+      tester,
+    ) async {
+      await seed();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        expect(inKey('cfStatTotal', money.format(320)), findsOneWidget, reason: 'February');
+        final average = tester.widget<PrivacySentence>(
+          find.descendant(of: find.byKey(const Key('cfStatAverage')), matching: find.byType(PrivacySentence)),
+        );
+        expect(average.figures, [money.format(520 / 3)], reason: '520 over the three months begun');
+        expect(inKey('cfStatAverage', '· Feb 2026'), findsOneWidget);
+        expect(tester.widget<BarChart>(find.byType(BarChart)).data.extraLinesData.horizontalLines.single.y, closeTo(520 / 3, 0.01));
+        expect(inKey('cfSpendingCategory:$groceries', money.format(220)), findsOneWidget);
+        expect(inKey('cfSpendingCategory:$fuel', money.format(100)), findsOneWidget);
+        expect(find.byKey(const Key('cfComparedWith')), findsNothing, reason: 'the average says where the part stands');
+        // A month still to come cannot be picked.
+        await tap(tester, find.byKey(const Key('cfBar:5')));
+        expect(inKey('cfStatTotal', money.format(320)), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        expect(inKey('cfStatTotal', money.format(520)), findsOneWidget, reason: 'the year again');
+        expect(find.byKey(const Key('cfStatAverage')), findsNothing);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('privacy mode: the average part is masked, which part it is stays readable', (tester) async {
+      await seed();
+      await h.pump(tester, isPrivate: true);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        expect(masked(inKey('cfStatAverage', money.format(520 / 3))), isTrue);
+        expect(masked(inKey('cfStatAverage', '· Feb 2026')), isFalse);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a swipe on the bars goes to the period before', (tester) async {
+      await seed();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
+        await tester.fling(find.byKey(const Key('cfStatChart')), const Offset(400, 0), 1500);
+        await h.settle(tester);
+        expect(screenTitle(tester), '${s.legendExpenses} · 2025');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('Savings: a month\'s pair tapped shows that month: what came in, what went out, its lists', (tester) async {
+      await seed();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfSavingsCard')));
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        // February: 3,000 in, 320 out.
+        expect(inKey('cfStatTotal', money.format(2680)), findsOneWidget);
+        expect(find.text('+${money.format(3000)}'), findsOneWidget);
+        expect(find.text('−${money.format(320)}'), findsOneWidget);
+        expect(find.text('· Feb 2026'), findsOneWidget);
       } finally {
         await h.unmount(tester);
       }
@@ -591,8 +704,17 @@ void main() {
         // 6,000 in, 520 of expenses.
         expect(inKey('cfStatTotal', money.format(5480)), findsOneWidget);
         final pairs = tester.widget<BarChart>(find.byType(BarChart)).data.barGroups;
-        expect([for (final g in pairs) g.barRods.length], [2, 2, 2, 2, 2], reason: 'income and expenses, the year and the four before it');
-        expect(pairs.last.barRods.map((r) => r.toY), [6000, 520]);
+        expect(pairs.length, 12, reason: 'income and expenses, a pair a month');
+        expect(
+          [for (final g in pairs.take(4)) g.barRods.map((r) => r.toY).toList()],
+          [
+            [3000, 80],
+            [3000, 320],
+            [0, 120],
+            [0, 0],
+          ],
+          reason: 'January: 220 spent, 40 back, 100 no record shows; February: 320; March so far: 120',
+        );
         expect(find.text('+${money.format(6000)}'), findsOneWidget);
         expect(find.text('−${money.format(520)}'), findsOneWidget);
         // 5,480 saved to 10 March against 5,600 a year earlier (6,000 in, 400 spent).

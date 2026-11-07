@@ -1899,6 +1899,11 @@ class AppStrings {
   String get cfViewYoY => _it ? 'Anno su anno' : 'Year-over-year';
   String get cfTotals => _it ? 'Totali' : 'Totals';
   String get cfMonthlyAverage => _it ? 'Media mensile' : 'Monthly average';
+  // The average of a period's parts: [amount] a day, a week, a month, a year.
+  String cfAveragePerDay(String amount) => _it ? 'Media di $amount al giorno' : 'Average of $amount a day';
+  String cfAveragePerWeek(String amount) => _it ? 'Media di $amount a settimana' : 'Average of $amount a week';
+  String cfAveragePerMonth(String amount) => _it ? 'Media di $amount al mese' : 'Average of $amount a month';
+  String cfAveragePerYear(String amount) => _it ? "Media di $amount all'anno" : 'Average of $amount a year';
   String get cfChartLines => _it ? 'Linee' : 'Lines';
   String get cfChartBars => _it ? 'Barre' : 'Bars';
 

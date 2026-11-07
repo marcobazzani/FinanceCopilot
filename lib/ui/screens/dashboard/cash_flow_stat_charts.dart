@@ -32,7 +32,9 @@ String _compact(double value, String locale, String symbol) => '${NumberFormat.c
 /// ([before], grey). The line is green when the period does better than the
 /// one it is compared with, red when worse ([good], the same comparison as the
 /// change shown with it), neutral without one. Amounts appear only on the
-/// detailed chart, and never in privacy mode.
+/// detailed chart, and never in privacy mode: touching it there tells, for
+/// the day touched, the period's total and the other period's on the same
+/// day of it ([start], [otherStart]), and how far apart they are.
 class _RunningChart extends ConsumerWidget {
   final List<double> now;
   final List<double>? before;
@@ -47,6 +49,15 @@ class _RunningChart extends ConsumerWidget {
   final bool detailed;
   final String locale;
   final String symbol;
+
+  /// What the detailed chart's touch tells: the figure's name ([title]), whether
+  /// more is better ([upIsGood]), the first day of the period and of the one
+  /// it is compared with.
+  final String title;
+  final bool upIsGood;
+  final DateTime? start;
+  final DateTime? otherStart;
+  final String language;
   const _RunningChart({
     required this.now,
     required this.before,
@@ -56,7 +67,46 @@ class _RunningChart extends ConsumerWidget {
     required this.locale,
     required this.symbol,
     this.detailed = false,
+    this.title = '',
+    this.upIsGood = false,
+    this.start,
+    this.otherStart,
+    this.language = 'en',
   });
+
+  /// The box shown for the day [x] touched: the figure and the change between
+  /// the two lines, then each line's day and total.
+  LineTooltipItem _tooltip(int x, List<double> before, ColorScheme scheme) {
+    final money = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final i = x - 1;
+    final (a, b) = (i < now.length ? now[i] : null, i < before.length ? before[i] : null);
+    final (thisDay, thatDay) = (start == null ? null : addDays(start!, i), otherStart == null ? null : addDays(otherStart!, i));
+    // The same day of the month a year apart reads alike: the years tell them apart.
+    final sameName = thisDay != null && thatDay != null && thisDay.month == thatDay.month && thisDay.day == thatDay.day;
+    final day = sameName ? DateFormat.yMMMd(language) : fmt.dayMonthFormat(language);
+    final base = TextStyle(color: scheme.onInverseSurface, fontSize: 12);
+    final muted = TextStyle(color: scheme.onInverseSurface.withValues(alpha: 0.7), fontSize: 12);
+    final rows = <TextSpan>[
+      if (a != null && thisDay != null) TextSpan(text: '\n${day.format(thisDay)}  ${money.format(a)}', style: base),
+      if (b != null && thatDay != null) TextSpan(text: '\n${day.format(thatDay)}  ${money.format(b)}', style: muted),
+    ];
+    // Readable on the box, light or dark.
+    final onLight = ThemeData.estimateBrightnessForColor(scheme.inverseSurface) == Brightness.light;
+    final (better, worse) = onLight ? (Colors.green.shade800, Colors.red.shade700) : (Colors.green.shade300, Colors.red.shade300);
+    final d = a == null || b == null ? null : a - b;
+    final change = d == null
+        ? null
+        : TextSpan(
+            text: ' ${d >= 0 ? '▲' : '▼'} ${money.format(d.abs())}',
+            style: base.copyWith(fontWeight: FontWeight.w600, color: d.abs() < 0.5 ? null : ((d > 0) == upIsGood ? better : worse)),
+          );
+    return LineTooltipItem(
+      title,
+      base.copyWith(fontWeight: FontWeight.w600),
+      textAlign: TextAlign.left,
+      children: [?change, ...rows],
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -91,10 +141,11 @@ class _RunningChart extends ConsumerWidget {
           enabled: detailed && !isPrivate,
           touchTooltipData: LineTouchTooltipData(
             getTooltipColor: (_) => scheme.inverseSurface,
-            getTooltipItems: (spots) => [
-              for (final spot in spots)
-                LineTooltipItem(_compact(spot.y, locale, symbol), TextStyle(color: scheme.onInverseSurface, fontSize: 12)),
-            ],
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
+            maxContentWidth: 240,
+            // One box for both lines: the first touched spot carries it.
+            getTooltipItems: (spots) => [for (final (k, spot) in spots.indexed) k == 0 ? _tooltip(spot.x.round(), b, scheme) : null],
           ),
         ),
         extraLinesData: ExtraLinesData(
@@ -173,13 +224,14 @@ class _RunningChart extends ConsumerWidget {
   }
 }
 
-/// One bar ([a]), or a pair (income [a] and expenses [b]); [highlight]: the
-/// period shown, in full colour, the others muted.
+/// One bar ([a]), or a pair (income [a] and expenses [b]); [highlight]: in
+/// full colour, the others muted.
 typedef _Bar = ({String label, double a, double? b, bool highlight});
 
-/// Labelled bars: the period against the ones before it. The tallest bar's
-/// amount sits top right, never in privacy mode; touching a bar tells its
-/// amount, not in privacy mode either.
+/// Labelled bars, the parts of a period. The tallest bar's amount sits top
+/// right, never in privacy mode. Tapping anywhere in a bar's column hands its
+/// index to [onTap]; [average] draws a dashed line at that height, labelled
+/// (not in privacy mode).
 class _BarsChart extends ConsumerWidget {
   final List<_Bar> bars;
 
@@ -187,14 +239,16 @@ class _BarsChart extends ConsumerWidget {
   final Color color;
   final String locale;
   final String symbol;
-  const _BarsChart({required this.bars, required this.color, required this.locale, required this.symbol});
+  final ValueChanged<int>? onTap;
+  final double? average;
+  const _BarsChart({required this.bars, required this.color, required this.locale, required this.symbol, this.onTap, this.average});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final isPrivate = ref.watch(privacyModeProvider);
     if (bars.isEmpty) return const SizedBox.shrink();
-    final top = bars.fold(0.0, (m, b) => max(m, max(b.a, b.b ?? 0)));
+    final top = [for (final b in bars) max(b.a, b.b ?? 0), ?average].fold(0.0, max);
     final paired = bars.any((b) => b.b != null);
     final count = bars.length;
     final width = (paired ? 0.55 : 1.0) * (count <= 6 ? 30.0 : (count <= 12 ? 18.0 : 8.0));
@@ -229,13 +283,24 @@ class _BarsChart extends ConsumerWidget {
               show: true,
               border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
-            barTouchData: BarTouchData(
-              enabled: !isPrivate,
-              touchTooltipData: BarTouchTooltipData(
-                getTooltipColor: (_) => scheme.inverseSurface,
-                getTooltipItem: (group, _, rod, _) =>
-                    BarTooltipItem(_compact(rod.toY, locale, symbol), TextStyle(color: scheme.onInverseSurface, fontSize: 12)),
-              ),
+            // A tapped column selects its bar instead (see [onTap]).
+            barTouchData: BarTouchData(enabled: false),
+            extraLinesData: ExtraLinesData(
+              horizontalLines: [
+                if (average case final avg?)
+                  HorizontalLine(
+                    y: avg,
+                    color: scheme.outline,
+                    strokeWidth: 1,
+                    dashArray: const [4, 4],
+                    label: HorizontalLineLabel(
+                      show: !isPrivate,
+                      alignment: Alignment.topRight,
+                      style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                      labelResolver: (line) => _compact(line.y, locale, symbol),
+                    ),
+                  ),
+              ],
             ),
             titlesData: FlTitlesData(
               leftTitles: const AxisTitles(),
@@ -280,6 +345,18 @@ class _BarsChart extends ConsumerWidget {
             ],
           ),
         ),
+        // The columns, the full height: a tap selects the bar of its column.
+        if (onTap case final tap?)
+          Positioned.fill(
+            child: Row(
+              children: [
+                for (var i = 0; i < count; i++)
+                  Expanded(
+                    child: GestureDetector(key: Key('cfBar:$i'), behavior: HitTestBehavior.opaque, onTap: () => tap(i)),
+                  ),
+              ],
+            ),
+          ),
         if (!isPrivate && top > 0)
           Positioned(
             top: 0,
@@ -320,50 +397,39 @@ class _RingChart extends StatelessWidget {
   }
 }
 
-/// The period and the ones before it as small labelled bars: the period's
-/// own (the last) in [color], the others grey. Shape, not size.
+/// The parts of the period as small bars: each a track, filled in [color] up
+/// to its share of the biggest; a part still to come is an empty track.
+/// Shape, not size.
 class _MiniBars extends StatelessWidget {
-  final List<({String label, double value, bool current})> bars;
+  final List<({double value, bool future})> bars;
   final Color color;
   const _MiniBars({required this.bars, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final top = bars.fold(0.0, (m, b) => max(m, b.value));
+    final width = bars.length > 7 ? 8.0 : 12.0;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final b in bars)
           Expanded(
-            child: Column(
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, box) => Align(
-                      alignment: Alignment.bottomCenter,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                        width: 12,
-                        height: max(4.0, box.maxHeight * (top <= 0 ? 0 : b.value / top)),
-                        decoration: BoxDecoration(color: b.current ? color : scheme.outlineVariant, borderRadius: BorderRadius.circular(6)),
-                      ),
-                    ),
+            child: Center(
+              child: Container(
+                width: width,
+                decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(width / 2)),
+                alignment: Alignment.bottomCenter,
+                child: LayoutBuilder(
+                  builder: (context, box) => AnimatedContainer(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutCubic,
+                    width: width,
+                    height: b.future || top <= 0 || b.value <= 0 ? 0 : max(width, box.maxHeight * b.value / top),
+                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(width / 2)),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  b.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.clip,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: b.current ? scheme.onSurface : scheme.onSurfaceVariant,
-                    fontWeight: b.current ? FontWeight.w700 : FontWeight.w400,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
       ],

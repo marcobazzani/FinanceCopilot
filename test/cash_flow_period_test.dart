@@ -145,9 +145,14 @@ void main() {
       expect([for (final t in chartTicks(w, w.start!, w.end!, 'en')) t.label], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
     });
 
-    test('a month: a bar a day; labels every fifth day and the last, never crowded', () {
+    test('a month: a bar a week, 1–7 to 22–28 and the rest; labels every fifth day and the last, never crowded', () {
       final m = CashFlowPeriod.month(2026, 11);
-      expect(periodBuckets(m, m.start!, m.end!).length, 30);
+      final weeks = periodBuckets(m, m.start!, m.end!);
+      expect([for (final w in weeks) bucketLabel(m, w, 'en')], ['1–7', '8–14', '15–21', '22–28', '29–30']);
+      expect(weeks.last, (start: DateTime(2026, 11, 29), end: DateTime(2026, 11, 30)));
+      final feb = CashFlowPeriod.month(2026, 2);
+      expect(periodBuckets(feb, feb.start!, feb.end!).length, 4, reason: 'February: four whole weeks');
+      expect(partSpanOf(m), CashFlowPartSpan.week);
       expect([for (final t in chartTicks(m, m.start!, m.end!, 'en')) t.x], [1, 6, 11, 16, 21, 26, 30]);
     });
 
@@ -159,10 +164,19 @@ void main() {
       expect((ticks.first, ticks[1]), ((x: 1, label: 'Jan'), (x: 32, label: 'Feb')));
     });
 
-    test('the bars read as days, months or years', () {
-      expect(bucketLabel(CashFlowPeriod.month(2026, 11), DateTime(2026, 11, 6), 'en'), '6');
-      expect(bucketLabel(CashFlowPeriod.year(2026), DateTime(2026, 3, 1), 'en'), 'Mar');
-      expect(bucketLabel(CashFlowPeriod.all, DateTime(2019, 1, 1), 'en'), '2019');
+    test('the bars read as days, weeks, months or years, and are that long', () {
+      final week = CashFlowPeriod.thisWeek(today);
+      expect(bucketLabel(week, (start: DateTime(2026, 11, 6), end: DateTime(2026, 11, 6)), 'en'), 'Fri');
+      expect(bucketLabel(CashFlowPeriod.year(2026), (start: DateTime(2026, 3, 1), end: DateTime(2026, 3, 31)), 'en'), 'Mar');
+      expect(bucketLabel(CashFlowPeriod.all, (start: DateTime(2019, 1, 1), end: DateTime(2019, 12, 31)), 'en'), '2019');
+      expect(
+        [partSpanOf(week), partSpanOf(CashFlowPeriod.year(2026)), partSpanOf(CashFlowPeriod.all)],
+        [
+          CashFlowPartSpan.day,
+          CashFlowPartSpan.month,
+          CashFlowPartSpan.year,
+        ],
+      );
     });
   });
 
@@ -209,13 +223,12 @@ void main() {
     });
   });
 
-  group('the five before', () {
-    test('a period and the four before it, oldest first', () {
-      expect([for (final p in trailOf(CashFlowPeriod.month(2026, 2))) shortLabel(p, 'en')], ['Oct', 'Nov', 'Dec', 'Jan', 'Feb']);
-      expect([for (final p in trailOf(CashFlowPeriod.year(2026))) shortLabel(p, 'en')], ['2022', '2023', '2024', '2025', '2026']);
-      expect([for (final p in trailOf(CashFlowPeriod.thisHalf(today))) shortLabel(p, 'en')], ['Jul 24', 'Jan 25', 'Jul 25', 'Jan 26', 'Jul 26']);
-      expect([for (final p in trailOf(CashFlowPeriod.thisWeek(today))) shortLabel(p, 'en')], ['Oct 5', 'Oct 12', 'Oct 19', 'Oct 26', 'Nov 2']);
-      expect(trailOf(CashFlowPeriod.all), [CashFlowPeriod.all]);
+  group('short labels', () {
+    test('a month, a year, a half year, a week', () {
+      expect(shortLabel(CashFlowPeriod.month(2026, 2), 'en'), 'Feb');
+      expect(shortLabel(CashFlowPeriod.year(2026), 'en'), '2026');
+      expect(shortLabel(CashFlowPeriod.thisHalf(today), 'en'), 'Jul 26');
+      expect(shortLabel(CashFlowPeriod.thisWeek(today), 'en'), 'Nov 2');
     });
 
     test('short labels in Italian', () {

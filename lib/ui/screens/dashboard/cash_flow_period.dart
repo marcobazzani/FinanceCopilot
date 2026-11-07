@@ -290,13 +290,17 @@ ComparedFigure? compareUnits(Iterable<ComparedUnit> units) {
   return any ? (current: current, base: base) : null;
 }
 
-/// The bars of a period: its days (a week, a month, a short run of days), its
-/// months (a half year, a year, a run of months) or its years (every year).
+/// The parts of a period, its bars: the days of a week or of a short run of
+/// days; the weeks of a month (1–7, 8–14, 15–21, 22–28, then the rest); the
+/// months of a half year, a year or a longer run; the years of every year.
 List<DayRange> periodBuckets(CashFlowPeriod period, DateTime start, DateTime end) {
-  final byDay =
-      period.kind == CashFlowPeriodKind.week ||
-      period.kind == CashFlowPeriodKind.month ||
-      (period.kind == CashFlowPeriodKind.days && period.dayCount <= 31);
+  if (period.kind == CashFlowPeriodKind.month) {
+    return [
+      for (var d = 1; d <= end.day; d += 7)
+        (start: DateTime(start.year, start.month, d), end: DateTime(start.year, start.month, min(d + 6, end.day))),
+    ];
+  }
+  final byDay = period.kind == CashFlowPeriodKind.week || (period.kind == CashFlowPeriodKind.days && period.dayCount <= 31);
   if (byDay) {
     return [for (var d = start; !d.isAfter(end); d = addDays(d, 1)) (start: d, end: d)];
   }
@@ -350,13 +354,24 @@ List<ChartTick> chartTicks(CashFlowPeriod period, DateTime start, DateTime end, 
   }
 }
 
-/// How the bar of [period] starting [start] reads under the bars.
-String bucketLabel(CashFlowPeriod period, DateTime start, String language) => switch (period.kind) {
-  CashFlowPeriodKind.week => DateFormat.E(language).format(start),
-  CashFlowPeriodKind.month => '${start.day}',
-  CashFlowPeriodKind.days when period.dayCount <= 31 => '${start.day}',
-  CashFlowPeriodKind.all => '${start.year}',
-  _ => monthAbbr(start.month, language),
+/// How [part], one of the [periodBuckets] of [period], reads under its bar.
+String bucketLabel(CashFlowPeriod period, DayRange part, String language) => switch (period.kind) {
+  CashFlowPeriodKind.week => DateFormat.E(language).format(part.start),
+  CashFlowPeriodKind.month => '${part.start.day}–${part.end.day}',
+  CashFlowPeriodKind.days when period.dayCount <= 31 => '${part.start.day}',
+  CashFlowPeriodKind.all => '${part.start.year}',
+  _ => monthAbbr(part.start.month, language),
+};
+
+/// How long each of the [periodBuckets] of [period] is.
+enum CashFlowPartSpan { day, week, month, year }
+
+CashFlowPartSpan partSpanOf(CashFlowPeriod period) => switch (period.kind) {
+  CashFlowPeriodKind.week => CashFlowPartSpan.day,
+  CashFlowPeriodKind.month => CashFlowPartSpan.week,
+  CashFlowPeriodKind.days when period.dayCount <= 31 => CashFlowPartSpan.day,
+  CashFlowPeriodKind.all => CashFlowPartSpan.year,
+  _ => CashFlowPartSpan.month,
 };
 
 /// [period] in a few characters, under a bar or a dot: "Nov" for a month,
@@ -369,8 +384,3 @@ String shortLabel(CashFlowPeriod period, String language) => switch (period.kind
   CashFlowPeriodKind.week || CashFlowPeriodKind.days => dayMonthFormat(language).format(period.firstDay!),
   CashFlowPeriodKind.all => '',
 };
-
-/// [period] and the [count] − 1 periods before it, oldest first: the bars of
-/// the Income and Net cards and of their screens. Every year is only itself.
-List<CashFlowPeriod> trailOf(CashFlowPeriod period, {int count = 5}) =>
-    period.kind == CashFlowPeriodKind.all ? [period] : [for (var back = count - 1; back >= 0; back--) period.shifted(-back)];
