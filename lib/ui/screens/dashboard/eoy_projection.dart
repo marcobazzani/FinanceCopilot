@@ -111,6 +111,9 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
 /// Abbreviated name of [month] (1-12) in [locale], e.g. "Apr" / "apr".
 String monthAbbr(int month, String locale) => DateFormat.MMM(locale).format(DateTime(2000, month.clamp(1, 12)));
 
+/// A month by its name and year: "Mar 2026" ("mar 2026" in Italian).
+String monthYearLabel(int year, int month, String locale) => '${monthAbbr(month, locale)} $year';
+
 /// A position-size figure inside a rich formula or explanation: an amount of
 /// income, expenses, savings or a projection of them. Privacy mode masks these
 /// spans alone; the labels, months and percentages around them stay readable.
@@ -273,7 +276,7 @@ TextSpan? buildEoyExplanationSpan({
       const TextSpan(text: '\n  '),
       if (d.partial case (:final month, :final days, :final of))
         TextSpan(
-          text: '${s.cfPartialMonth('${monthAbbr(month, locale)} ${current.year}', days, of, '${monthAbbr(month, locale)} ${prev.year}')}\n  ',
+          text: '${s.cfPartialMonth(monthYearLabel(current.year, month, locale), days, of, monthYearLabel(prev.year, month, locale))}\n  ',
         ),
       ...sentence(s.eoyProjection(amountMark), [
         amount(d.prevTotal, bare: true),

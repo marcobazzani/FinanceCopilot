@@ -5,6 +5,7 @@
 // compared with.
 import 'package:drift/drift.dart' hide Column, isNotNull, isNull;
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -125,7 +126,7 @@ void main() {
       await h.pump(tester);
       try {
         await h.openTab(tester, 'Cash Flow');
-        expect(period(tester), 'Mar 2026');
+        expect(period(tester), s.cfThisMonth);
         // 1–10 March: 120 at Conad; 1–10 February: 220. Expenses are down 100.
         expect(inKey('cfExpensesCard', money.format(120)), findsOneWidget);
         expect(inKey('cfExpensesCard', '▼ ${money.format(100)}'), findsOneWidget);
@@ -137,7 +138,7 @@ void main() {
         expect(inKey('cfSavingsCard', s.cfInNegative), findsOneWidget);
         expect(
           tester.widget<Text>(find.byKey(const Key('cfComparedWith'))).data,
-          [s.cfComparedWith('Feb 2026'), s.cfSoFarAgainst('Mar 2026', 10, 31, 'Feb 1 – Feb 10 2026'), s.cfNoIncomeToCompare].join('\n'),
+          [s.cfComparedWith('Feb 2026'), s.cfSoFarAgainst(s.cfThisMonth, 10, 31, 'Feb 1 – Feb 10 2026'), s.cfNoIncomeToCompare].join('\n'),
         );
       } finally {
         await h.unmount(tester);
@@ -214,6 +215,10 @@ void main() {
             tester.widget<Text>(find.descendant(of: find.byKey(Key('cfStrip:$i')), matching: find.byType(Text))).data,
         ].join(' ');
         expect(strip(), 'Nov Dec Jan Feb Mar');
+        // Each name's tooltip spells its period; the month in progress is this month.
+        String tooltip(int i) =>
+            tester.widget<Tooltip>(find.ancestor(of: find.byKey(Key('cfStrip:$i')), matching: find.byType(Tooltip))).message!;
+        expect([tooltip(14), tooltip(15)], ['Feb 2026', s.cfThisMonth]);
         await tap(tester, find.byKey(const Key('cfStrip:14')));
         expect(period(tester), 'Feb 2026');
         expect(inKey('cfExpensesCard', money.format(320)), findsOneWidget, reason: '220 at Conad and 100 of fuel');
@@ -328,6 +333,240 @@ void main() {
     });
   });
 
+  group('narrowing Expenses to a category, a merchant, an account or a currency', () {
+    Future<void> openExpenses(WidgetTester tester, {bool isPrivate = false}) async {
+      await h.pump(tester, isPrivate: isPrivate);
+      await h.openTab(tester, 'Cash Flow');
+      await span(tester, 'year');
+      await tap(tester, find.byKey(const Key('cfExpensesCard')));
+    }
+
+    testWidgets('a category tapped: the screen is that category — figure, average since its first month, every chart, its rows by day', (
+      tester,
+    ) async {
+      await seed();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · Groceries');
+        // 220, 220 and 120 at Conad, from January: 560 over three months.
+        expect(inKey('cfStatTotal', money.format(560)), findsOneWidget);
+        final average = tester.widget<PrivacySentence>(
+          find.descendant(of: find.byKey(const Key('cfStatAverage')), matching: find.byType(PrivacySentence)),
+        );
+        expect(average.figures, [money.format(560 / 3)]);
+        expect(inKey('cfStatAverage', '· ${s.cfThisYear}'), findsOneWidget);
+        expect(inKey('cfFilter', 'Groceries'), findsOneWidget);
+        expect(inKey('cfFilter', s.cfTransactions(3)), findsOneWidget);
+        expect(find.byKey(Key('cfSpendingCategory:$fuel')), findsNothing, reason: 'the rows of the category, not the categories');
+        // Its rows by day, newest first.
+        final days = [
+          for (final d in ['Mar 5, 2026', 'Feb 10, 2026', 'Jan 10, 2026']) tester.getTopLeft(find.text(d)).dy,
+        ];
+        expect(days, [...days]..sort());
+        // The line is the category's running total.
+        final line = tester.widget<LineChart>(find.byType(LineChart)).data.lineBarsData.last;
+        expect(line.spots.last.y, 560);
+        // As bars, its months.
+        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
+        expect(
+          [for (final g in tester.widget<BarChart>(find.byType(BarChart)).data.barGroups.take(4)) g.barRods.single.toY],
+          [220, 220, 120, 0],
+        );
+        // A month picked: the category in that month.
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        expect(inKey('cfStatTotal', money.format(220)), findsOneWidget);
+        expect(inKey('cfFilter', s.cfTransactions(1)), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfBar:1')));
+        // Cleared: everything again.
+        await tap(tester, find.byKey(const Key('cfFilterClear')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · ${s.cfThisYear}');
+        expect(inKey('cfStatTotal', money.format(520)), findsOneWidget);
+        expect(find.byKey(Key('cfSpendingCategory:$fuel')), findsOneWidget);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a row whose statement only repeats its name reads its category under it', (tester) async {
+      await seed();
+      final account = (await h.db.select(h.db.accounts).get()).single.id;
+      final day = DateTime(2026, 3, 6);
+      final esselunga = await h.db
+          .into(h.db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: account,
+              operationDate: day,
+              valueDate: day,
+              amount: -30,
+              description: const Value('ESSELUNGA'),
+              counterparty: const Value('Esselunga'),
+              categoryId: Value(groceries),
+            ),
+          );
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        final row = find.byKey(Key('cfFilterTx:$esselunga'));
+        expect(find.descendant(of: row, matching: find.text('Esselunga')), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.text('Groceries')), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.text('ESSELUNGA')), findsNothing);
+        // A row whose statement says more keeps it.
+        expect(find.text('CONAD 2026-03-05'), findsOneWidget);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a category first used in February is averaged over February and March, not January', (tester) async {
+      await seed();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$fuel')), scroll: true);
+        final average = tester.widget<PrivacySentence>(
+          find.descendant(of: find.byKey(const Key('cfStatAverage')), matching: find.byType(PrivacySentence)),
+        );
+        expect(average.figures, [money.format(50)], reason: '100 of fuel over the two months since');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a slice of the ring tapped narrows to its category, and stands out', (tester) async {
+      await seed();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(const Key('cfChartMode:ring')), scroll: true);
+        final ring = tester.widget<PieChart>(find.byType(PieChart)).data;
+        // The biggest first: groceries, then fuel.
+        ring.pieTouchData.touchCallback!(
+          FlTapUpEvent(TapUpDetails(kind: PointerDeviceKind.touch)),
+          PieTouchResponse(touchLocation: Offset.zero, touchedSection: PieTouchedSection(ring.sections[1], 1, 0, 0)),
+        );
+        await h.settle(tester);
+        expect(screenTitle(tester), '${s.legendExpenses} · Car, fuel & tolls');
+        final sections = tester.widget<PieChart>(find.byType(PieChart)).data.sections;
+        expect(sections[1].radius, greaterThan(sections[0].radius), reason: 'the category picked stands out');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('by account and by currency: a row narrows to its account or its currency', (tester) async {
+      await seed();
+      final account = (await h.db.select(h.db.accounts).get()).single;
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByAccount).last);
+        await h.settle(tester);
+        expect(inKey('cfSpendingAccount:${account.id}', account.name), findsOneWidget);
+        expect(find.byKey(const Key('cfSpendingNote')), findsNothing, reason: 'how the categories add up, under the categories only');
+        expect(inKey('cfSpendingAccount:${account.id}', money.format(660)), findsOneWidget);
+        await tap(tester, find.byKey(Key('cfSpendingAccount:${account.id}')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · ${account.name}');
+        expect(inKey('cfStatTotal', money.format(660)), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfFilterClear')), scroll: true);
+        expect(find.byKey(Key('cfSpendingAccount:${account.id}')), findsOneWidget, reason: 'cleared, the list is by account again');
+
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByCurrency).last);
+        await h.settle(tester);
+        await tap(tester, find.byKey(const Key('cfSpendingCurrency:EUR')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · EUR');
+        expect(inKey('cfStatTotal', money.format(660)), findsOneWidget);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('privacy mode: the narrowed amounts are masked; its name, the days and the counts are not', (tester) async {
+      await seed();
+      try {
+        await openExpenses(tester, isPrivate: true);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(masked(inKey('cfStatTotal', money.format(560))), isTrue);
+        expect(masked(find.text(money.format(-220)).first), isTrue, reason: 'a row and a day total are position size');
+        expect(masked(inKey('cfFilter', 'Groceries')), isFalse);
+        expect(masked(inKey('cfFilter', s.cfTransactions(3))), isFalse);
+        expect(masked(find.text('Mar 5, 2026')), isFalse);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('as bars, Expenses tells its average part and draws it; as a line, its change', (tester) async {
+      await seed();
+      try {
+        await openExpenses(tester);
+        // A line: the change against last year, and the notes on how it is compared.
+        expect(find.byKey(const Key('cfStatAverage')), findsNothing);
+        expect(find.textContaining(s.cfComparedWith('')), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfChartMode:bars')), scroll: true);
+        // Bars: 520 over the three months begun, dashed across them.
+        final average = tester.widget<PrivacySentence>(
+          find.descendant(of: find.byKey(const Key('cfStatAverage')), matching: find.byType(PrivacySentence)),
+        );
+        expect(average.figures, [money.format(520 / 3)]);
+        expect(tester.widget<BarChart>(find.byType(BarChart)).data.extraLinesData.horizontalLines.single.y, closeTo(520 / 3, 0.01));
+        expect(find.textContaining(s.cfComparedWith('')), findsNothing, reason: 'no change shown, nothing to say how it is compared');
+        await tap(tester, find.byKey(const Key('cfChartMode:running')), scroll: true);
+        expect(find.byKey(const Key('cfStatAverage')), findsNothing);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('by account a saving plan is its own row, as by category; by currency it counts in its currency', (tester) async {
+      await seed();
+      // 6 × 200 set aside from July to December 2025 for a car bought in January.
+      final car = await ExtraordinaryEventService(h.db).create(
+        name: 'Car',
+        direction: EventDirection.outflow,
+        treatment: EventTreatment.spread,
+        totalAmount: 1200,
+        currency: 'EUR',
+        eventDate: DateTime(2026, 1, 26),
+        stepFrequency: StepFrequency.monthly,
+        spreadStart: DateTime(2025, 7, 26),
+        spreadEnd: DateTime(2025, 12, 26),
+      );
+      final account = (await h.db.select(h.db.accounts).get()).single;
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await h.pickYear(tester, 2025);
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByAccount).last);
+        await h.settle(tester);
+        // 2025: 710 at Conad from the account, 1,200 into the plan.
+        expect(inKey('cfSpendingAccount:${account.id}', money.format(710)), findsOneWidget);
+        expect(inKey('cfSpendingPlan:$car', money.format(1200)), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByCurrency).last);
+        await h.settle(tester);
+        expect(inKey('cfSpendingCurrency:EUR', money.format(1910)), findsOneWidget);
+        expect(inKey('cfSpendingCurrency:EUR', s.cfTransactions(9)), findsOneWidget, reason: '3 at Conad, 6 steps of the plan');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('the line labels where both lines end', (tester) async {
+      await seed();
+      try {
+        await openExpenses(tester);
+        final ends = tester.widget<LineChart>(find.byType(LineChart)).data.extraLinesData.horizontalLines.map((l) => l.y).toList();
+        // 520 so far this year; 710 for the whole of 2025, the year it is compared with.
+        expect(ends, [520, 710]);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+  });
+
   group('the span selector', () {
     testWidgets('1W 6M 1Y go to this week, this half year, this year; the selected one is highlighted', (tester) async {
       await seed();
@@ -335,13 +574,13 @@ void main() {
       try {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'week');
-        expect(period(tester), 'Mar 9 – Mar 15 2026');
+        expect(period(tester), s.cfThisWeek);
         await span(tester, 'half');
         expect(period(tester), 'Jan–Jun 2026');
         await span(tester, 'year');
-        expect(period(tester), '2026 YTD');
+        expect(period(tester), s.cfThisYear);
         await span(tester, 'month');
-        expect(period(tester), 'Mar 2026');
+        expect(period(tester), s.cfThisMonth);
       } finally {
         await h.unmount(tester);
       }
@@ -495,7 +734,7 @@ void main() {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'year');
         await tap(tester, find.byKey(const Key('cfExpensesCard')));
-        expect(screenTitle(tester), '${s.legendExpenses} · 2026 YTD');
+        expect(screenTitle(tester), '${s.legendExpenses} · ${s.cfThisYear}');
         expect(inKey('cfStatTotal', money.format(520)), findsOneWidget);
         // 560 of 660 at Conad, 3 transactions.
         expect(inKey('cfSpendingCategory:$groceries', s.cfTransactions(3)), findsOneWidget);
@@ -582,7 +821,7 @@ void main() {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'year');
         await tap(tester, find.byKey(const Key('cfIncomeCard')));
-        expect(screenTitle(tester), '${s.legendIncome} · 2026 YTD');
+        expect(screenTitle(tester), '${s.legendIncome} · ${s.cfThisYear}');
         expect(inKey('cfStatTotal', money.format(6000)), findsOneWidget);
         expect(inKey('cfIncomeBucket:2026-2', s.cfRecords(1)), findsOneWidget);
         await tap(tester, find.byKey(const Key('cfIncomeBucket:2026-2')), scroll: true);
@@ -637,7 +876,7 @@ void main() {
         expect(inKey('cfStatTotal', money.format(320)), findsOneWidget);
         await tap(tester, find.byKey(const Key('cfBar:1')));
         expect(inKey('cfStatTotal', money.format(520)), findsOneWidget, reason: 'the year again');
-        expect(find.byKey(const Key('cfStatAverage')), findsNothing);
+        expect(inKey('cfStatAverage', '· ${s.cfThisYear}'), findsOneWidget, reason: 'as bars, Expenses tells its average month');
       } finally {
         await h.unmount(tester);
       }
@@ -700,7 +939,7 @@ void main() {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'year');
         await tap(tester, find.byKey(const Key('cfSavingsCard')));
-        expect(screenTitle(tester), '${s.legendSavings} · 2026 YTD');
+        expect(screenTitle(tester), '${s.legendSavings} · ${s.cfThisYear}');
         // 6,000 in, 520 of expenses.
         expect(inKey('cfStatTotal', money.format(5480)), findsOneWidget);
         final pairs = tester.widget<BarChart>(find.byType(BarChart)).data.barGroups;

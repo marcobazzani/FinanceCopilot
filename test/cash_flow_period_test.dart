@@ -46,13 +46,15 @@ void main() {
   });
 
   group('labels', () {
-    test('English', () {
+    test('English: the period in progress by what it is to you', () {
       expect(label(CashFlowPeriod.month(2026, 10)), 'Oct 2026');
-      expect(label(CashFlowPeriod.year(2026)), '2026 YTD');
+      expect(label(CashFlowPeriod.month(2026, 11)), 'This month');
+      expect(label(CashFlowPeriod.year(2026)), 'This year');
       expect(label(CashFlowPeriod.year(2025)), '2025');
       expect(label(CashFlowPeriod.thisHalf(today)), 'Jul–Dec 2026');
       expect(label(CashFlowPeriod.range((2025, 11), (2026, 2))), 'Nov 2025 – Feb 2026');
-      expect(label(CashFlowPeriod.thisWeek(today)), 'Nov 2 – Nov 8 2026');
+      expect(label(CashFlowPeriod.thisWeek(today)), 'This week');
+      expect(label(CashFlowPeriod.thisWeek(today).shifted(-1)), 'Oct 26 – Nov 1 2026');
       expect(label(CashFlowPeriod.week(DateTime(2026, 1, 1))), 'Dec 29 2025 – Jan 4 2026');
       expect(label(CashFlowPeriod.all), 'All years');
     });
@@ -60,8 +62,10 @@ void main() {
     test('Italian', () {
       String it(CashFlowPeriod p) => label(p, s: AppStrings.it, language: 'it');
       expect(it(CashFlowPeriod.month(2026, 10)), 'ott 2026');
-      expect(it(CashFlowPeriod.year(2026)), '2026 in corso');
-      expect(it(CashFlowPeriod.thisWeek(today)), '2 nov – 8 nov 2026');
+      expect(it(CashFlowPeriod.year(2026)), "Quest'anno");
+      expect(it(CashFlowPeriod.month(2026, 11)), 'Questo mese');
+      expect(it(CashFlowPeriod.thisWeek(today)), 'Questa settimana');
+      expect(it(CashFlowPeriod.thisWeek(today).shifted(-1)), '26 ott – 1 nov 2026');
     });
   });
 

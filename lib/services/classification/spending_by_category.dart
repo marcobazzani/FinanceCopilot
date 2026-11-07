@@ -106,8 +106,10 @@ class SpendingPeriod {
 }
 
 /// One row counted as spending, in base currency (positive): a transaction
-/// ([id]), or a step of a spread saving plan ([plan], no transaction). Rows
-/// without a merchant key, and cash withdrawals, have no merchant.
+/// ([id]) of an account ([accountId]), or a step of a spread saving plan
+/// ([plan], no transaction, no account). [currency] is the one the row was
+/// spent in: the transaction's, or the plan's. Rows without a merchant key,
+/// and cash withdrawals, have no merchant.
 typedef SpendingEntry = ({
   DateTime day,
   double amount,
@@ -116,6 +118,8 @@ typedef SpendingEntry = ({
   String? merchantKey,
   String? merchantName,
   ({int eventId, String name})? plan,
+  int? accountId,
+  String currency,
 });
 
 /// Spending per category, per year and per month, in base currency (positive
@@ -200,8 +204,9 @@ class SpendingByCategoryData {
     }
   }
 
-  /// What the days [from] to [to] spent, in all.
-  double spentBetween(DateTime from, DateTime to) => entriesBetween(from, to).fold(0.0, (a, e) => a + e.amount);
+  /// What the days [from] to [to] spent, in all, or on the rows [where] picks.
+  double spentBetween(DateTime from, DateTime to, {bool Function(SpendingEntry)? where}) =>
+      entriesBetween(from, to).where(where ?? (_) => true).fold(0.0, (a, e) => a + e.amount);
 
   /// What the days [from] to [to] spent, per category, merchant and saving
   /// plan: the same sums as a month's, over any run of days.
@@ -221,15 +226,17 @@ class SpendingByCategoryData {
     return sums.build();
   }
 
-  /// What the days [from] to [to] spent as a running total: the total at the
-  /// end of each day, one figure a day.
-  List<double> runningBetween(DateTime from, DateTime to) {
+  /// What the days [from] to [to] spent as a running total — the total at
+  /// the end of each day, one figure a day — of all rows, or of those [where]
+  /// picks.
+  List<double> runningBetween(DateTime from, DateTime to, {bool Function(SpendingEntry)? where}) {
     final out = <double>[];
     var sum = 0.0;
     var i = _firstOn(from);
     for (var day = from; !day.isAfter(to); day = DateTime(day.year, day.month, day.day + 1)) {
       while (i < entries.length && !entries[i].day.isAfter(day)) {
-        sum += entries[i++].amount;
+        final e = entries[i++];
+        if (where == null || where(e)) sum += e.amount;
       }
       out.add(sum);
     }
@@ -455,6 +462,8 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
         merchantKey: merchant ? key : null,
         merchantName: merchant ? t.counterparty : null,
         plan: null,
+        accountId: t.accountId,
+        currency: t.currency,
       ));
     }
   }
@@ -480,6 +489,8 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
       merchantKey: null,
       merchantName: null,
       plan: (eventId: item.eventId, name: item.eventName),
+      accountId: null,
+      currency: item.currency,
     ));
   }
   entries.sort((a, b) => a.day.compareTo(b.day));

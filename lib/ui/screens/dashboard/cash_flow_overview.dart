@@ -8,6 +8,24 @@ part of 'dashboard_screen.dart';
 /// Income, Expenses and Savings as Year by year and the Sankey.
 enum _Stat { expenses, income, savings }
 
+/// What the Expenses screen is narrowed to: one category, merchant, account
+/// or currency; [label] names it.
+enum _FilterKind { category, merchant, account, currency }
+
+typedef _SpendFilter = ({_FilterKind kind, Object? key, String label});
+
+/// Whether [e] is one of the spending rows [f] keeps. A saving plan's steps
+/// have no category, merchant or account.
+bool _keeps(_SpendFilter f, SpendingEntry e) => switch (f.kind) {
+  _FilterKind.category => e.plan == null && e.categoryId == f.key,
+  _FilterKind.merchant => e.merchantKey != null && e.merchantKey == f.key,
+  _FilterKind.account => e.accountId != null && e.accountId == f.key,
+  _FilterKind.currency => e.currency == f.key,
+};
+
+/// How the spending list groups its rows.
+enum _SpentBy { category, merchant, account, currency }
+
 /// [stats] of [period] for the overview or a screen, from the live data.
 _PeriodStats _statsFor(WidgetRef ref, CashFlowPeriod period, {required String language}) {
   final ieData = ref.watch(_incomeExpenseDataProvider).value;
@@ -131,7 +149,7 @@ class _CashFlowOverviewState extends ConsumerState<_CashFlowOverview> {
             periods: _periods,
             index: index,
             language: widget.language,
-            tooltipOf: (p) => s.cfPageTooltip(p.label(s, widget.language, widget.today)),
+            tooltipOf: (p) => p.label(s, widget.language, widget.today),
             onTap: (i) => _controller.animateToPage(i, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic),
           ),
         if (stats.notes.isNotEmpty)
@@ -590,6 +608,14 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
   /// The bar picked and the period it is a part of; null: the whole period.
   ({CashFlowPeriod period, int index})? _picked;
 
+  /// What the Expenses screen is narrowed to (a list row or a ring slice
+  /// tapped); it stays across chart modes, spans and periods. Null: all.
+  _SpendFilter? _filter;
+
+  /// How the Expenses list groups its rows; it stays as the screen changes
+  /// around it, a filter set and cleared included.
+  _SpentBy _spentBy = _SpentBy.category;
+
   /// The bars of [stats]: its parts; on Savings a pair per month of it, or
   /// the period itself when it is a month or shorter.
   List<_Part> _barsOf(_PeriodStats stats) {
@@ -648,13 +674,39 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
       _Stat.income => (s.legendIncome, shown.income, stats.incomeVs, true, stats.income),
       _Stat.savings => (s.legendSavings, shown.savings, stats.savingsVs, true, stats.savings),
     };
-    final average = part == null || stats.partsBegun == 0 ? null : whole / stats.partsBegun;
+    // Narrowed to a category, merchant, account or currency: the spending rows
+    // it keeps — over the period, each part, and the period compared with.
+    final filter = stat == _Stat.expenses && spending != null ? _filter : null;
+    bool keeps(SpendingEntry e) => _keeps(filter!, e);
+    final day = dayOf(today);
+    DateTime upTo(DateTime end) => end.isAfter(day) ? day : end;
+    final narrowParts = filter == null
+        ? null
+        : [for (final b in bars) b.future ? 0.0 : spending!.spentBetween(b.start, upTo(b.end), where: keeps)];
+    final narrowTotal = filter == null ? null : spending!.spentBetween(stats.start, stats.until, where: keeps);
+    final narrowValue = filter == null ? null : (part == null ? narrowTotal : spending!.spentBetween(part.start, upTo(part.end), where: keeps));
+
+    // The average part: of the parts begun; narrowed, of those since its first
+    // spending (a category first used in February is not averaged over
+    // January).
+    final double? average;
+    if (narrowParts != null) {
+      final firstUsed = narrowParts.indexWhere((a) => a.abs() >= 0.005);
+      final parts = firstUsed < 0 ? 0 : stats.partsBegun - firstUsed;
+      average = parts <= 0 ? null : narrowTotal! / parts;
+    } else {
+      // Picked, or Expenses as bars: the average part stands where the change would.
+      final shows = part != null || (stat == _Stat.expenses && _mode == _ChartMode.bars);
+      average = !shows || stats.partsBegun == 0 ? null : whole / stats.partsBegun;
+    }
     String averageOf(String amount) => switch (partSpanOf(period)) {
       CashFlowPartSpan.day => s.cfAveragePerDay(amount),
       CashFlowPartSpan.week => s.cfAveragePerWeek(amount),
       CashFlowPartSpan.month => s.cfAveragePerMonth(amount),
       CashFlowPartSpan.year => s.cfAveragePerYear(amount),
     };
+
+    final ringCategories = shown.spending.byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
     Widget chart() {
       if (stat == _Stat.savings) {
@@ -667,17 +719,26 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
         );
       }
       final spent = stat == _Stat.expenses;
+      final narrowNow = filter == null ? null : spending!.runningBetween(stats.start, stats.until, where: keeps);
+      final (otherStart, otherEnd) = (stats.otherStart, stats.otherEnd);
+      final narrowBefore = filter == null || otherStart == null || otherEnd == null
+          ? null
+          : spending!.runningBetween(otherStart, otherEnd, where: keeps);
       return switch (_mode) {
         _ChartMode.running => _RunningChart(
-          now: spent ? stats.expensesRun : stats.incomeRun,
-          before: spent ? stats.expensesRunBefore : stats.incomeRunBefore,
+          now: narrowNow ?? (spent ? stats.expensesRun : stats.incomeRun),
+          before: filter != null ? narrowBefore : (spent ? stats.expensesRunBefore : stats.incomeRunBefore),
           days: stats.dayCount,
           ticks: stats.ticks,
-          good: _isBetterVs(spent ? stats.expensesVs : stats.incomeVs, upIsGood: !spent),
+          good: narrowNow != null
+              ? (narrowNow.isEmpty || narrowBefore == null || narrowBefore.length < narrowNow.length
+                    ? null
+                    : _isBetter(narrowNow.last, narrowBefore[narrowNow.length - 1], upIsGood: false))
+              : _isBetterVs(spent ? stats.expensesVs : stats.incomeVs, upIsGood: !spent),
           detailed: true,
           locale: widget.locale,
           symbol: symbol,
-          title: title,
+          title: filter?.label ?? title,
           upIsGood: upIsGood,
           start: stats.start,
           otherStart: stats.otherStart,
@@ -686,7 +747,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
         _ChartMode.bars => _BarsChart(
           bars: [
             for (final (i, b) in bars.indexed)
-              (label: b.label, a: spent ? b.expenses : b.income, b: null, highlight: picked == null || picked == i),
+              (label: b.label, a: narrowParts?[i] ?? (spent ? b.expenses : b.income), b: null, highlight: picked == null || picked == i),
           ],
           color: spent ? scheme.error : Colors.blue.shade400,
           locale: widget.locale,
@@ -697,10 +758,17 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
         ),
         _ChartMode.ring => _RingChart(
           slices: [
-            for (final MapEntry(key: id, value: v) in (stats.spending.byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value))))
+            for (final MapEntry(key: id, value: v) in ringCategories)
               (value: v, color: categoryPaintOrNone(id == null ? null : byId[id], scheme)),
-            for (final p in stats.spending.savingPlans) (value: p.amount, color: Colors.amber.shade700),
+            for (final p in shown.spending.savingPlans) (value: p.amount, color: Colors.amber.shade700),
           ],
+          // A category picked stands out; tapping a slice picks its category.
+          highlight: filter?.kind == _FilterKind.category ? ringCategories.indexWhere((e) => e.key == filter!.key) : null,
+          onTap: (i) {
+            if (i >= ringCategories.length) return;
+            final id = ringCategories[i].key;
+            setState(() => _filter = (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)));
+          },
         ),
       };
     }
@@ -736,7 +804,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                         style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       TextSpan(
-                        text: ' · ${stats.label}',
+                        text: ' · ${filter?.label ?? stats.label}',
                         style: theme.textTheme.titleLarge?.copyWith(color: scheme.onSurfaceVariant),
                       ),
                     ],
@@ -757,7 +825,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
             ],
           ),
           _statAmount(
-            money.format(value),
+            money.format(narrowValue ?? value),
             stat: stat,
             hero: true,
             key: const Key('cfStatTotal'),
@@ -778,8 +846,9 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                 ],
               ),
             ),
-          // A part picked: the average part and which it is; else the change.
-          if (partPeriod != null && stat != _Stat.savings)
+          // A part picked, a filter, or Expenses as bars: the average part and
+          // where the figure stands; else the change.
+          if (stat != _Stat.savings && (average != null || partPeriod != null || filter != null))
             Wrap(
               key: const Key('cfStatAverage'),
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -792,7 +861,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                     figures: [money.format(average)],
                     style: theme.textTheme.bodyLarge?.copyWith(color: scheme.primary),
                   ),
-                Text('· ${partPeriod.label(s, widget.language, today)}', style: muted),
+                Text('· ${(partPeriod ?? period).label(s, widget.language, today)}', style: muted),
               ],
             )
           else if (change != null && partPeriod == null)
@@ -818,7 +887,7 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
           ),
           const SizedBox(height: 20),
           _SpanSelector(period: period, available: available),
-          if (stats.notes.isNotEmpty && partPeriod == null)
+          if (stats.notes.isNotEmpty && partPeriod == null && filter == null && average == null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Text(stats.notes.join('\n'), style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
@@ -826,7 +895,25 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
           const SizedBox(height: 24),
           if (spending != null)
             switch (stat) {
-              _Stat.expenses => _SpentList(spending: spending, stats: shown, locale: widget.locale, language: widget.language),
+              _Stat.expenses when filter != null => _FilteredRows(
+                filter: filter,
+                entries: [
+                  for (final e in spending.entriesBetween(part?.start ?? stats.start, part == null ? stats.until : upTo(part.end)))
+                    if (keeps(e)) e,
+                ],
+                locale: widget.locale,
+                language: widget.language,
+                onClear: () => setState(() => _filter = null),
+              ),
+              _Stat.expenses => _SpentList(
+                spending: spending,
+                stats: shown,
+                locale: widget.locale,
+                language: widget.language,
+                by: _spentBy,
+                onBy: (by) => setState(() => _spentBy = by),
+                onFilter: (f) => setState(() => _filter = f),
+              ),
               _Stat.income => _IncomeList(stats: shown, locale: widget.locale, language: widget.language),
               _Stat.savings => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -942,7 +1029,7 @@ class _RowsCard extends ConsumerStatefulWidget {
   final ({Key key, String title, double amount})? total;
   final String locale;
   final String symbol;
-  const _RowsCard({required this.rows, required this.locale, required this.symbol, this.footer = const [], this.total});
+  const _RowsCard({super.key, required this.rows, required this.locale, required this.symbol, this.footer = const [], this.total});
 
   @override
   ConsumerState<_RowsCard> createState() => _RowsCardState();
@@ -969,7 +1056,14 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
       leading: r.avatar,
       title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
-      subtitle: r.subtitle.isEmpty ? null : Text(r.subtitle, style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+      subtitle: r.subtitle.isEmpty
+          ? null
+          : Text(
+              r.subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
       trailing: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1026,17 +1120,34 @@ class _SpentList extends ConsumerStatefulWidget {
   final String locale;
   final String language;
 
-  /// With its own heading (the category / merchant switch); off under the
-  /// Savings screen's heading.
+  /// With its own heading (the grouping switch); off under the Savings
+  /// screen's heading.
   final bool titled;
-  const _SpentList({required this.spending, required this.stats, required this.locale, required this.language, this.titled = true});
+
+  /// How the rows are grouped, and the switch to another grouping.
+  final _SpentBy by;
+  final ValueChanged<_SpentBy>? onBy;
+
+  /// Narrows the screen to a row's category, merchant, account or currency;
+  /// without it a row opens its transactions.
+  final ValueChanged<_SpendFilter>? onFilter;
+  const _SpentList({
+    required this.spending,
+    required this.stats,
+    required this.locale,
+    required this.language,
+    this.titled = true,
+    this.by = _SpentBy.category,
+    this.onBy,
+    this.onFilter,
+  });
 
   @override
   ConsumerState<_SpentList> createState() => _SpentListState();
 }
 
 class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<_SpentList> {
-  bool _byMerchant = false;
+  _SpentBy get _by => widget.by;
 
   @override
   SpendingByCategoryData spendingOf(_SpentList list) => list.spending;
@@ -1055,9 +1166,43 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
     Category? category(int? id) => id == null ? null : byId[id];
     void open(String title, List<int> Function(SpendingByCategoryData) idsOf) =>
         openRows(context, idsOf, title: '$title · ${st.label}', locale: widget.locale);
+    // A row narrows the screen to itself, or opens its transactions.
+    VoidCallback tapOf(_SpendFilter f, List<int> Function(SpendingByCategoryData) idsOf) {
+      final narrow = widget.onFilter;
+      return narrow != null ? () => narrow(f) : () => open(f.label, idsOf);
+    }
+
+    // By account or currency: the period's rows summed by it. A saving plan's
+    // steps have no account: by account, each plan is its own row, as by
+    // category; by currency, they count in the plan's.
+    final entries = widget.spending.entriesBetween(from, to).toList();
+    Map<K, ({double amount, int count})> sumsBy<K>(K Function(SpendingEntry) keyOf, {bool plans = true}) {
+      final out = <K, ({double amount, int count})>{};
+      for (final e in entries) {
+        if (!plans && e.plan != null) continue;
+        final k = keyOf(e);
+        final was = out[k] ?? (amount: 0.0, count: 0);
+        out[k] = (amount: was.amount + e.amount, count: was.count + 1);
+      }
+      return out;
+    }
+
+    final accounts = {for (final a in ref.watch(accountsProvider).value ?? const <Account>[]) a.id: a.name};
+    final planRows = <_ListRow>[
+      for (final plan in p.savingPlans)
+        (
+          key: Key('cfSpendingPlan:${plan.eventId}'),
+          avatar: RowIconBadge(icon: Icons.savings_outlined, color: Colors.amber.shade700, tint: 0.15),
+          title: s.savingForLabel(plan.name),
+          subtitle: s.legendSavings,
+          amount: plan.amount,
+          share: total <= 0 ? 0.0 : plan.amount / total,
+          onTap: null,
+        ),
+    ];
 
     final rows = <_ListRow>[
-      if (!_byMerchant) ...[
+      if (_by == _SpentBy.category) ...[
         for (final MapEntry(key: id, value: amount) in p.byCategory.entries)
           (
             key: Key('cfSpendingCategory:$id'),
@@ -1066,19 +1211,13 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
             subtitle: s.cfTransactions(p.ids(id).length),
             amount: amount,
             share: total <= 0 ? 0.0 : amount / total,
-            onTap: () => open(categoryLabelFor(id, byId, s), (live) => live.sumOfDays(from, to).ids(id)),
+            onTap: tapOf(
+              (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)),
+              (live) => live.sumOfDays(from, to).ids(id),
+            ),
           ),
-        for (final plan in p.savingPlans)
-          (
-            key: Key('cfSpendingPlan:${plan.eventId}'),
-            avatar: RowIconBadge(icon: Icons.savings_outlined, color: Colors.amber.shade700, tint: 0.15),
-            title: s.savingForLabel(plan.name),
-            subtitle: s.legendSavings,
-            amount: plan.amount,
-            share: total <= 0 ? 0.0 : plan.amount / total,
-            onTap: null,
-          ),
-      ] else
+        ...planRows,
+      ] else if (_by == _SpentBy.merchant)
         for (final m in p.topMerchants(p.merchants.length))
           (
             key: Key('cfSpendingMerchant:${m.key}'),
@@ -1089,13 +1228,52 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
             subtitle: s.cfTransactions(m.ids.length),
             amount: m.amount,
             share: total <= 0 ? 0.0 : m.amount / total,
-            onTap: () => open(m.name, (live) => live.sumOfDays(from, to).merchants[m.key]?.ids ?? const []),
+            onTap: tapOf((
+              kind: _FilterKind.merchant,
+              key: m.key,
+              label: m.name,
+            ), (live) => live.sumOfDays(from, to).merchants[m.key]?.ids ?? const []),
+          )
+      else if (_by == _SpentBy.account) ...[
+        for (final MapEntry(key: id, value: sum) in sumsBy((e) => e.accountId!, plans: false).entries)
+          (
+            key: Key('cfSpendingAccount:$id'),
+            avatar: RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
+            title: accounts[id] ?? '#$id',
+            subtitle: s.cfTransactions(sum.count),
+            amount: sum.amount,
+            share: total <= 0 ? 0.0 : sum.amount / total,
+            onTap: tapOf(
+              (kind: _FilterKind.account, key: id, label: accounts[id] ?? '#$id'),
+              (live) => [
+                for (final e in live.entriesBetween(from, to))
+                  if (e.accountId == id) ?e.id,
+              ],
+            ),
+          ),
+        ...planRows,
+      ] else
+        for (final MapEntry(key: code, value: sum) in sumsBy((e) => e.currency).entries)
+          (
+            key: Key('cfSpendingCurrency:$code'),
+            avatar: RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
+            title: code,
+            subtitle: s.cfTransactions(sum.count),
+            amount: sum.amount,
+            share: total <= 0 ? 0.0 : sum.amount / total,
+            onTap: tapOf(
+              (kind: _FilterKind.currency, key: code, label: code),
+              (live) => [
+                for (final e in live.entriesBetween(from, to))
+                  if (e.currency == code) ?e.id,
+              ],
+            ),
           ),
     ]..sort((a, b) => b.amount.compareTo(a.amount));
     // By category, the list adds up to the Expenses: the ledger's spending,
     // less the refunds received, and what no transaction shows.
     final footer = <_ListRow>[];
-    if (!_byMerchant) {
+    if (_by == _SpentBy.category) {
       if (st.refunds >= 0.5) {
         footer.add((
           key: const Key('cfExpensesRefunds'),
@@ -1133,29 +1311,30 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
       }
     }
 
+    String byName(_SpentBy by) => switch (by) {
+      _SpentBy.category => s.cfByCategory,
+      _SpentBy.merchant => s.cfByMerchant,
+      _SpentBy.account => s.cfByAccount,
+      _SpentBy.currency => s.cfByCurrency,
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             if (widget.titled)
-              PopupMenuButton<bool>(
+              PopupMenuButton<_SpentBy>(
                 key: const Key('cfSpentBy'),
-                initialValue: _byMerchant,
-                onSelected: (v) => setState(() => _byMerchant = v),
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: false, child: Text(s.cfByCategory)),
-                  PopupMenuItem(value: true, child: Text(s.cfByMerchant)),
-                ],
+                initialValue: _by,
+                onSelected: widget.onBy,
+                itemBuilder: (_) => [for (final by in _SpentBy.values) PopupMenuItem(value: by, child: Text(byName(by)))],
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        _byMerchant ? s.cfByMerchant : s.cfByCategory,
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-                      ),
+                      Text(byName(_by), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
                       const Icon(Icons.keyboard_arrow_down),
                     ],
                   ),
@@ -1176,12 +1355,104 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
           _RowsCard(
             rows: rows,
             footer: footer,
-            total: _byMerchant ? null : (key: const Key('cfExpensesTotalRow'), title: s.legendExpenses, amount: st.expenses),
+            total: _by != _SpentBy.category ? null : (key: const Key('cfExpensesTotalRow'), title: s.legendExpenses, amount: st.expenses),
             locale: widget.locale,
             symbol: currencySymbol(widget.spending.baseCurrency),
           ),
-        const SizedBox(height: 10),
-        Footnote(s.cfExpensesNote(s.legendExpenses, s.cfYearByYear, s.spendingByCategoryTitle), key: const Key('cfSpendingNote')),
+        // How the categories add up to the Expenses: under the categories only.
+        if (_by == _SpentBy.category) ...[
+          const SizedBox(height: 10),
+          Footnote(s.cfExpensesNote(s.legendExpenses, s.cfYearByYear, s.spendingByCategoryTitle), key: const Key('cfSpendingNote')),
+        ],
+      ],
+    );
+  }
+}
+
+/// The spending rows a filter keeps, newest day first: a card naming the
+/// filter, how many rows it keeps and Clear; then each day under its date and
+/// its total, its rows on a card. A transaction opens its classification
+/// card.
+class _FilteredRows extends ConsumerWidget {
+  final _SpendFilter filter;
+  final List<SpendingEntry> entries;
+  final String locale;
+  final String language;
+  final VoidCallback onClear;
+  const _FilteredRows({required this.filter, required this.entries, required this.locale, required this.language, required this.onClear});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final byId = ref.watch(categoriesByIdProvider);
+    final txs = {for (final t in ref.watch(allTransactionsProvider).value ?? const <Transaction>[]) t.id: t};
+    final symbol = _cashFlowSymbol(ref);
+    final money = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final date = fmt.fullDateFormat(language);
+    final days = <DateTime, List<SpendingEntry>>{};
+    for (final e in entries.reversed) {
+      (days[e.day] ??= []).add(e);
+    }
+    final planBadge = RowIconBadge(icon: Icons.savings_outlined, color: Colors.amber.shade700, tint: 0.15);
+    final avatar = switch (filter.kind) {
+      _FilterKind.category => CategoryAvatar(category: byId[filter.key]),
+      _FilterKind.merchant => RowIconBadge(icon: Icons.storefront_outlined, color: scheme.outline, tint: 0.15),
+      _FilterKind.account => RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
+      _FilterKind.currency => RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
+    };
+
+    // A transaction by its counterparty, the statement's words under it (the
+    // category when they only repeat the name); a saving plan's step by its
+    // plan. Spent: a negative amount.
+    _ListRow row(SpendingEntry e) {
+      final t = e.id == null ? null : txs[e.id];
+      if (t == null) {
+        return (
+          key: Key('cfFilterTx:${e.id}'),
+          avatar: planBadge,
+          title: e.plan == null ? '' : s.savingForLabel(e.plan!.name),
+          subtitle: s.legendSavings,
+          amount: -e.amount,
+          share: null,
+          onTap: null,
+        );
+      }
+      final name = t.counterparty;
+      final repeats = name == null || t.description.trim().toLowerCase() == name.trim().toLowerCase();
+      return (
+        key: Key('cfFilterTx:${t.id}'),
+        avatar: CategoryAvatar(category: byId[t.categoryId]),
+        title: name ?? t.description,
+        subtitle: repeats ? categoryLabelFor(t.categoryId, byId, s) : t.description,
+        amount: -e.amount,
+        share: null,
+        onTap: () => showTransactionClassifySheet(context, tx: t, title: s.classifyTransaction, accountId: t.accountId),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Material(
+          color: scheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            key: const Key('cfFilter'),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            leading: avatar,
+            title: Text(filter.label, style: theme.textTheme.titleMedium),
+            subtitle: Text(s.cfTransactions(entries.length), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+            trailing: FilledButton.tonal(key: const Key('cfFilterClear'), onPressed: onClear, child: Text(s.cfClearFilter)),
+          ),
+        ),
+        for (final MapEntry(key: d, value: rows) in days.entries) ...[
+          const SizedBox(height: 24),
+          _SectionTitle(title: date.format(d), amount: money.format(-rows.fold(0.0, (a, e) => a + e.amount))),
+          _RowsCard(key: ValueKey(d), rows: [for (final e in rows) row(e)], locale: locale, symbol: symbol),
+        ],
       ],
     );
   }

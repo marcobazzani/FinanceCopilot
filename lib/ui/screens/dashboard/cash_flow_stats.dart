@@ -181,8 +181,10 @@ class _PeriodStats {
   final String? vsLabel;
   final List<String> notes;
 
-  /// The first day of the period it is compared with; null without one.
+  /// The first and the last day of the period it is compared with; null
+  /// without one.
   final DateTime? otherStart;
+  final DateTime? otherEnd;
 
   /// Running totals, one figure a day: the period's so far, the other
   /// period's whole.
@@ -222,6 +224,7 @@ class _PeriodStats {
     required this.vsLabel,
     required this.notes,
     required this.otherStart,
+    required this.otherEnd,
     required this.expensesRun,
     required this.incomeRun,
     required this.expensesRunBefore,
@@ -364,6 +367,7 @@ class _PeriodStats {
       vsLabel: vsLabel,
       notes: notes,
       otherStart: vsLabel == null ? null : otherDays?.start,
+      otherEnd: vsLabel == null ? null : otherDays?.end,
       expensesRun: started && ieData != null ? _expensesRunning(ieData, start, until) : const [],
       incomeRun: started && ieData != null ? _incomeRunning(ieData, start, until) : const [],
       expensesRunBefore: vsLabel == null || otherDays == null || ieData == null

@@ -150,6 +150,8 @@ class _RunningChart extends ConsumerWidget {
         ),
         extraLinesData: ExtraLinesData(
           horizontalLines: [
+            // Where each line ends, labelled at the right: the higher one above
+            // its height, the lower one under it, so the two never overlap.
             if (detailed && last != null)
               HorizontalLine(
                 y: last.y,
@@ -158,8 +160,20 @@ class _RunningChart extends ConsumerWidget {
                 dashArray: const [4, 4],
                 label: HorizontalLineLabel(
                   show: !isPrivate,
-                  alignment: Alignment.topRight,
+                  alignment: b.isEmpty || last.y >= b.last ? Alignment.topRight : Alignment.bottomRight,
                   style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                  labelResolver: (line) => _compact(line.y, locale, symbol),
+                ),
+              ),
+            if (detailed && b.length > 1 && (last == null || (b.last - last.y).abs() >= 0.5))
+              HorizontalLine(
+                y: b.last,
+                color: Colors.transparent,
+                strokeWidth: 0,
+                label: HorizontalLineLabel(
+                  show: !isPrivate,
+                  alignment: last == null || b.last > last.y ? Alignment.topRight : Alignment.bottomRight,
+                  style: TextStyle(fontSize: 11, color: scheme.outline),
                   labelResolver: (line) => _compact(line.y, locale, symbol),
                 ),
               ),
@@ -379,7 +393,13 @@ typedef _Slice = ({double value, Color color});
 /// categories (the list under it tells each one's amount). Shape, not size.
 class _RingChart extends StatelessWidget {
   final List<_Slice> slices;
-  const _RingChart({required this.slices});
+
+  /// The slice that stands out, the others dimmed; null: none does.
+  final int? highlight;
+
+  /// A slice tapped.
+  final ValueChanged<int>? onTap;
+  const _RingChart({required this.slices, this.highlight, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -391,7 +411,22 @@ class _RingChart extends StatelessWidget {
         sectionsSpace: 2,
         centerSpaceRadius: 72,
         startDegreeOffset: -90,
-        sections: [for (final s in slices) PieChartSectionData(value: s.value, color: s.color, radius: 26, showTitle: false)],
+        pieTouchData: PieTouchData(
+          enabled: onTap != null,
+          touchCallback: (event, response) {
+            final i = response?.touchedSection?.touchedSectionIndex;
+            if (event is FlTapUpEvent && i != null && i >= 0) onTap?.call(i);
+          },
+        ),
+        sections: [
+          for (final (i, s) in slices.indexed)
+            PieChartSectionData(
+              value: s.value,
+              color: highlight == null || highlight == i ? s.color : s.color.withValues(alpha: 0.25),
+              radius: highlight == i ? 32 : 26,
+              showTitle: false,
+            ),
+        ],
       ),
     );
   }

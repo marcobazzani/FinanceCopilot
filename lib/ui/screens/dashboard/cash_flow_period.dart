@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/utils/formatters.dart' show dayMonthFormat;
 
-import 'eoy_projection.dart' show monthAbbr;
+import 'eoy_projection.dart' show monthAbbr, monthYearLabel;
 
 /// A month as (year, month 1-12).
 typedef YearMonth = (int, int);
@@ -207,22 +207,27 @@ class CashFlowPeriod {
     ];
   }
 
-  /// The period as it reads: "Nov 2026", "2026 YTD", "2025", "Jul–Dec 2026",
-  /// "Nov 2025 – Feb 2026", "Nov 2 – Nov 8 2026", "All years". Month and day
-  /// names are spelled in [language], as the Cash Flow tables spell them.
+  /// The period as it reads: "Oct 2026", "2025", "Jul–Dec 2026", "Nov 2025 –
+  /// Feb 2026", "Oct 26 – Nov 1 2026", "All years"; the week, month or year
+  /// [today] is in by what it is to you: "This week", "This month", "This
+  /// year". Month and day names are spelled in [language], as the Cash Flow
+  /// tables spell them.
   String label(AppStrings s, String language, DateTime today) {
-    String monthYear(YearMonth m) => '${monthAbbr(m.$2, language)} ${m.$1}';
+    String monthYear(YearMonth m) => monthYearLabel(m.$1, m.$2, language);
     switch (kind) {
       case CashFlowPeriodKind.all:
         return s.cfAllYears;
       case CashFlowPeriodKind.month:
-        return monthYear(from!);
+        // The one in progress by what it is to you: this month.
+        return from == (today.year, today.month) ? s.cfThisMonth : monthYear(from!);
       case CashFlowPeriodKind.year:
         final year = from!.$1;
-        return year == today.year ? '$year ${s.ytdSuffix}' : '$year';
+        return year == today.year ? s.cfThisYear : '$year';
       case CashFlowPeriodKind.range:
         final (a, b) = (from!, to!);
         return a.$1 == b.$1 ? '${monthAbbr(a.$2, language)}–${monthAbbr(b.$2, language)} ${a.$1}' : '${monthYear(a)} – ${monthYear(b)}';
+      case CashFlowPeriodKind.week when !dayOf(today).isBefore(firstDay!) && !dayOf(today).isAfter(lastDay!):
+        return s.cfThisWeek;
       case CashFlowPeriodKind.week:
       case CashFlowPeriodKind.days:
         final (a, b) = (firstDay!, lastDay!);

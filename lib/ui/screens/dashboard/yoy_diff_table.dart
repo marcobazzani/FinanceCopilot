@@ -18,7 +18,6 @@ class _YoYDiffTable extends ConsumerWidget {
     final amtFmt = fmt.amountFormat(locale);
     final theme = Theme.of(context);
     final sym = currencySymbol(data.baseCurrency);
-    final now = ref.watch(currentDateProvider);
     final before = {for (final y in (previous ?? data).years) y.year: y};
 
     // Pairs: (prevYear, curYear)
@@ -120,7 +119,8 @@ class _YoYDiffTable extends ConsumerWidget {
         for (final m in c.months)
           if (m.share < 1 && monthOf(p, m.month) != null) (current: m, base: monthOf(p, m.month)!),
     ];
-    String monthLabel(_MonthBucket m) => CashFlowPeriod.month(m.year, m.month).label(s, language, now);
+    // A month against the same month of another year: by its name, never "this month".
+    String monthLabel(_MonthBucket m) => monthYearLabel(m.year, m.month, language);
 
     final table = SingleChildScrollView(
       scrollDirection: Axis.horizontal,

@@ -1595,7 +1595,6 @@ class AppStrings {
   String get spendingByCategorySubtitle => _it
       ? 'Da dove arrivano e dove vanno i soldi, per categoria, nel periodo scelto (anno in corso se non ne scegli)'
       : 'Where the money comes from and where it goes, by category, in the picked period (the current year to date if none)';
-  String get ytdSuffix => _it ? 'in corso' : 'YTD';
   String get spendingByCategoryEmpty => _it
       ? 'Nessuna entrata o spesa da mostrare. Importa i movimenti e usa la procedura guidata per assegnare le categorie.'
       : 'No income or spending to show yet. Import transactions and use the wizard to assign categories.';
@@ -1869,11 +1868,17 @@ class AppStrings {
   // Cash Flow → Spending: the period's ledger spending, by category and merchant.
   String cfTransactions(int n) => _it ? (n == 1 ? '1 transazione' : '$n transazioni') : (n == 1 ? '1 transaction' : '$n transactions');
   String get cfByCategory => _it ? 'Per categoria' : 'By category';
+  // The period in progress, by what it is to the user.
+  String get cfThisWeek => _it ? 'Questa settimana' : 'This week';
+  String get cfThisMonth => _it ? 'Questo mese' : 'This month';
+  String get cfThisYear => _it ? "Quest'anno" : 'This year';
+  String get cfByAccount => _it ? 'Per conto' : 'By account';
+  String get cfByCurrency => _it ? 'Per valuta' : 'By currency';
+  String get cfClearFilter => _it ? 'Cancella' : 'Clear';
   String get cfManage => _it ? 'Gestisci' : 'Manage';
   // Cash Flow overview: the period's spending, income and net, one card each.
   String get cfInPositive => _it ? 'In positivo' : 'In the black';
   String get cfInNegative => _it ? 'In negativo' : 'In the red';
-  String cfPageTooltip(String period) => _it ? 'Vai a $period' : 'Go to $period';
   String cfVs(String period) => _it ? 'rispetto a $period' : 'vs $period';
 
   /// How the Expenses list adds up, and where else the same Expenses stand.
