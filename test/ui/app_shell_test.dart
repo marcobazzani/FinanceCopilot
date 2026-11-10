@@ -183,6 +183,9 @@ void main() {
   late FakeFilePicker picker;
   late FilePickerPlatform originalPicker;
 
+  // Several databases over the app's life, by design: a restore or an import
+  // swaps the open one for another, and each has its own in-memory executor.
+  setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
   setUpAll(() async => initializeDateFormatting());
 
   setUp(() async {

@@ -73,6 +73,10 @@ Future<AppDatabase> pumpApp(
   /// show; tests that opt in must dismiss it (tap "Start fresh").
   bool seedTestState = true,
 }) async {
+  // One in-memory database per test, in one process: the previous test's is
+  // left behind, over an executor of its own, so the shared-executor warning
+  // does not apply.
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   final db = AppDatabase.forTesting(NativeDatabase.memory());
   await isolateTestAppSettings();
 
@@ -277,6 +281,20 @@ Future<void> settle(WidgetTester tester) async {
   final n = _settleMs ~/ _frameMs;
   for (var i = 0; i < n; i++) {
     await tester.pump(const Duration(milliseconds: _frameMs));
+  }
+}
+
+/// Pop every screen above the shell by tapping the visible back buttons.
+/// Only a hit-testable one is tapped: a route mid-transition leaves a disabled
+/// or offstage back button behind (off the viewport on macOS), which `.first`
+/// would pick and the tap would miss. While only such a leftover remains, the
+/// transition gets time to finish instead. Bounded, so a screen without a way
+/// back cannot loop forever.
+Future<void> popToRoot(WidgetTester tester) async {
+  for (var i = 0; i < 20 && find.byType(BackButton).evaluate().isNotEmpty; i++) {
+    final back = find.byType(BackButton).hitTestable();
+    if (back.evaluate().isNotEmpty) await tester.tap(back.first);
+    await settle(tester);
   }
 }
 

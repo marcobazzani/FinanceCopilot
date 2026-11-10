@@ -12,12 +12,15 @@ import 'package:finance_copilot/database/database.dart';
 /// unmapped focus now returns `null` (logged) instead of a wrong generic.
 /// `_isGeographic` likewise uses an explicit term table. These tests pin both.
 void main() {
+  late AppDatabase db;
   late CompositionService service;
 
   setUp(() {
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    db = AppDatabase.forTesting(NativeDatabase.memory());
     service = CompositionService(db);
   });
+
+  tearDown(() => db.close());
 
   String focusHtml(String focus) => '<html><body><span data-testid="tl_etf-basics_value_investment-focus">$focus</span></body></html>';
 

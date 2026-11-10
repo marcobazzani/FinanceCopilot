@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import '../helpers/dropdown_finders.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
@@ -263,7 +264,7 @@ void main() {
       try {
         await tester.tap(find.byType(DropdownButtonFormField<EventType>));
         await settle(tester);
-        await tester.tap(find.byWidgetPredicate((w) => w is DropdownMenuItem<EventType> && w.value == EventType.revalue).last);
+        await tester.tap(dropdownMenuLabel(EventType.revalue));
         await settle(tester);
 
         await tester.tap(find.widgetWithText(FilledButton, 'Create Event'));

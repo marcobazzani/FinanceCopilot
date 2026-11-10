@@ -4,12 +4,15 @@ import 'package:finance_copilot/services/market/composition_service.dart';
 import 'package:finance_copilot/database/database.dart';
 
 void main() {
+  late AppDatabase db;
   late CompositionService service;
 
   setUp(() {
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    db = AppDatabase.forTesting(NativeDatabase.memory());
     service = CompositionService(db);
   });
+
+  tearDown(() => db.close());
 
   group('parseTerFromProviderHtml', () {
     test('extracts TER from fund DOM (float_lang_base pattern)', () {

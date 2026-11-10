@@ -195,10 +195,7 @@ void main() {
     await longSettle(tester);
     await longSettle(tester);
     // Back out to root.
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
     final simpleTxs = await (db.select(db.transactions)..where((t) => t.accountId.equals(fineco.id))).get();
     expect(simpleTxs, isNotEmpty, reason: 'UI-driven simple import should land transactions on Fineco');
     _step('   ✓ ${simpleTxs.length} txs imported via wizard UI');
@@ -281,10 +278,7 @@ void main() {
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     await pumpFor(tester, const Duration(seconds: 60));
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
     final afterFormulaTxs = await (db.select(db.transactions)..where((t) => t.accountId.equals(fineco.id))).get();
     expect(afterFormulaTxs.length, greaterThan(simpleTxs.length), reason: 'formula import should add transactions on top of step 4');
     _step('   ✓ formula UI imported ${afterFormulaTxs.length - simpleTxs.length} more txs');
@@ -385,10 +379,7 @@ void main() {
     await longSettle(tester);
     // Quick confirm step rendered (or fall through to mapper). Either way,
     // tap Cancel/back to return.
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 6: REVOLUT multi-year CSV import — exercises:
@@ -449,16 +440,7 @@ void main() {
         await settle(tester);
       }
     }
-    // Pop visible BackButtons. Bounded loop + hitTestable() filter avoids
-    // infinite tapping on disabled/offstage BackButtons left behind by
-    // routes mid-transition (seen on macOS where an offstage AppBar
-    // BackButton at offset >viewport.width was matched by `.first`).
-    for (var i = 0; i < 5; i++) {
-      final back = find.byType(BackButton).hitTestable();
-      if (back.evaluate().isEmpty) break;
-      await tester.tap(back.first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 6d: All-accounts virtual entry (account_detail_screen.dart in
@@ -503,12 +485,7 @@ void main() {
         await settle(tester);
         _step('   ✓ _TransferTile expand+collapse exercised');
       }
-      for (var i = 0; i < 5; i++) {
-        final back = find.byType(BackButton).hitTestable();
-        if (back.evaluate().isEmpty) break;
-        await tester.tap(back.first);
-        await settle(tester);
-      }
+      await popToRoot(tester);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -581,10 +558,7 @@ void main() {
     _step('   ✓ all 6 fields persisted (status=pending)');
 
     // Navigate back to the root.
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 7: balance-DELTA mode — fixture has 4 dated rows and a blank
@@ -672,10 +646,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
     await pumpFor(tester, const Duration(seconds: 60));
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
     final histAssets = await db.select(db.assets).get();
     expect(histAssets, isNotEmpty, reason: 'historic UI import should create at least one asset');
     expect(histAssets.first.intermediaryId, brokerId, reason: 'historic asset should be linked to Broker Fineco');
@@ -732,10 +703,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
     await pumpFor(tester, const Duration(seconds: 60));
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
     final curAssets = await db.select(db.assets).get();
     expect(curAssets.length, greaterThan(histAssets.length), reason: 'current UI import should add more assets');
     final degiroLinked = curAssets.where((a) => a.intermediaryId == degiroId).toList();
@@ -942,10 +910,7 @@ void main() {
         }
       }
     }
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 8c: REAL NETWORK SYNC — tap the toolbar refresh button to
@@ -1216,10 +1181,7 @@ void main() {
     }
     final incomeRows = await db.select(db.incomes).get();
     expect(incomeRows, isNotEmpty);
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 9b: Income inline edit dialog via UI — open on a row, change
@@ -1557,10 +1519,7 @@ void main() {
     _step('10j. EventDetailScreen UI — open Car repair, scroll timeline, regenerate');
     // Ensure we're back at root nav (any open EventEditScreen / detail
     // pushed earlier should be popped first).
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await settle(tester);
-    }
+    await popToRoot(tester);
     final accNav = find.text('Accounts');
     if (accNav.evaluate().isNotEmpty) {
       await tester.tap(accNav.first);
@@ -1592,10 +1551,7 @@ void main() {
           _step('   ✓ regenerate scheduled entries via UI');
         }
         // Back to list.
-        while (find.byType(BackButton).evaluate().isNotEmpty) {
-          await tester.tap(find.byType(BackButton).first);
-          await settle(tester);
-        }
+        await popToRoot(tester);
       }
     }
 
@@ -2216,10 +2172,7 @@ void main() {
         _step('   ✓ recalc dialog opened');
       }
       // Back to account list.
-      while (find.byType(BackButton).evaluate().isNotEmpty) {
-        await tester.tap(find.byType(BackButton).first);
-        await settle(tester);
-      }
+      await popToRoot(tester);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2534,7 +2487,7 @@ void main() {
     expect(find.text('Value'), findsAtLeast(1));
 
     _step('15G. Back to list, delete pillar via toolbar trash icon');
-    final backBtn = find.byType(BackButton);
+    final backBtn = find.byType(BackButton).hitTestable();
     if (backBtn.evaluate().isNotEmpty) {
       await tester.tap(backBtn.first);
       await longSettle(tester);

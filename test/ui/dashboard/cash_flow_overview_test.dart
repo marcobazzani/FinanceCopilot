@@ -234,6 +234,30 @@ void main() {
       }
     });
 
+    testWidgets('a swipe moves the period once the cards have settled, not while the finger is still dragging them', (tester) async {
+      await seed();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await tap(tester, find.byKey(const Key('cfStrip:14')));
+        expect(period(tester), 'Feb 2026');
+        // Past the middle of the page: the sections below rebuild with the period, and doing that while the
+        // cards are still sliding stalls the swipe.
+        final drag = await tester.startGesture(tester.getCenter(find.byKey(const Key('cfExpensesCard'))));
+        final page = tester.getSize(find.byType(PageView).first).width;
+        for (var i = 0; i < 4; i++) {
+          await drag.moveBy(Offset(-page * 0.2, 0));
+        }
+        await tester.pump();
+        expect(period(tester), 'Feb 2026', reason: 'still being dragged');
+        await drag.up();
+        await h.settle(tester);
+        expect(period(tester), s.cfThisMonth, reason: 'settled on the next month, the one in progress');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
     testWidgets('the Income card\'s bars are the parts of the period, as on its screen: the weeks of a month, the months of a year', (
       tester,
     ) async {

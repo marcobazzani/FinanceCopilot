@@ -162,64 +162,38 @@ void main() {
     });
   });
 
-  group('estimateSmoothedAnnualExpenses', () {
-    test('returns null when prev is null', () {
-      final r = estimateSmoothedAnnualExpenses(current: buildCurrent(), prev: null);
-      expect(r, isNull);
+  group('expensesOverLastYear', () {
+    // 1,000 a month in 2025, 2,000 a month in 2026 (whole months).
+    EoyYear year(int y, double perMonth, {int upTo = 12}) => EoyYear(
+      year: y,
+      income: 0,
+      expenses: perMonth * upTo,
+      months: [for (var m = 1; m <= upTo; m++) EoyMonth(month: m, income: 0, expenses: perMonth)],
+    );
+
+    test('on the last day of a month: the 12 whole months up to it', () {
+      // 31 Oct 2026: Nov 2025 .. Oct 2026 = 2 months of 2025 + 10 of 2026.
+      final r = expensesOverLastYear([year(2025, 1000), year(2026, 2000, upTo: 10)], DateTime(2026, 10, 31));
+      expect(r, 2 * 1000 + 10 * 2000);
     });
 
-    test('returns null when prev has zero expenses and projection fails', () {
-      final emptyPrev = EoyYear(
-        year: 2025,
-        income: 0,
-        expenses: 0,
-        months: List.generate(12, (i) => EoyMonth(month: i + 1, income: 0, expenses: 0)),
-      );
-      final r = estimateSmoothedAnnualExpenses(current: buildCurrent(), prev: emptyPrev);
-      expect(r, isNull);
+    test('mid-month: the month a year ago counts for the days after today only', () {
+      // 10 Nov 2026: Nov 2025 from the 11th (20/30 of 1,000), Dec 2025,
+      // Jan..Nov 2026 (November so far: 600).
+      final nov = [
+        for (var m = 1; m <= 10; m++) EoyMonth(month: m, income: 0, expenses: 2000),
+        const EoyMonth(month: 11, income: 0, expenses: 600, soFar: (days: 10, of: 30)),
+      ];
+      final r = expensesOverLastYear([year(2025, 1000), EoyYear(year: 2026, income: 0, expenses: 20600, months: nov)], DateTime(2026, 11, 10));
+      expect(r, closeTo(1000 * 20 / 30 + 1000 + 10 * 2000 + 600, 1e-9));
     });
 
-    test('falls back to prev total when current has no expenses', () {
-      final emptyCurrent = EoyYear(
-        year: 2026,
-        income: 0,
-        expenses: 0,
-        months: const [EoyMonth(month: 1, income: 0, expenses: 0)],
-      );
-      final r = estimateSmoothedAnnualExpenses(current: emptyCurrent, prev: buildPrev());
-      expect(r, isNotNull);
-      expect(r!.value, 24000);
-      expect(r.projectedCurrent, isNull);
-      expect(r.prevTotal, 24000);
+    test('null without a month a year ago: less than 12 months of history is not passed off as a year', () {
+      expect(expensesOverLastYear([year(2026, 2000, upTo: 5)], DateTime(2026, 5, 31)), isNull);
     });
 
-    test('averages EoY projection with prev full-year total', () {
-      // Prev: 24000 expenses across 12 months evenly (2000/mo).
-      // Current: 5 months at 2200 each = 11000.
-      // prevSame (Jan-May) = 5 * 2000 = 10000.
-      // Projection = prevTotal * currentTotal / prevSame
-      //            = 24000 * 11000 / 10000 = 26400.
-      // Smoothed = (26400 + 24000) / 2 = 25200.
-      final r = estimateSmoothedAnnualExpenses(
-        current: buildCurrent(),
-        prev: buildPrev(),
-      );
-      expect(r, isNotNull);
-      expect(r!.value, closeTo(25200, 0.001));
-      expect(r.projectedCurrent, closeTo(26400, 0.001));
-      expect(r.prevTotal, 24000);
-      expect(r.projectionMonths, 5);
-    });
-
-    test('smoothed value sits between projected and prev total', () {
-      final r = estimateSmoothedAnnualExpenses(
-        current: buildCurrent(),
-        prev: buildPrev(),
-      )!;
-      final lo = r.prevTotal!;
-      final hi = r.projectedCurrent!;
-      expect(r.value, greaterThanOrEqualTo(lo < hi ? lo : hi));
-      expect(r.value, lessThanOrEqualTo(lo > hi ? lo : hi));
+    test('null when the window has no expenses', () {
+      expect(expensesOverLastYear([year(2025, 0), year(2026, 0, upTo: 5)], DateTime(2026, 5, 31)), isNull);
     });
   });
 }

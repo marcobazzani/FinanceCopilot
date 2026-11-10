@@ -129,18 +129,25 @@ class _CashFlowOverviewState extends ConsumerState<_CashFlowOverview> {
         const SizedBox(height: 8),
         SizedBox(
           height: 380,
-          child: PageView.builder(
-            key: ValueKey('cfOverviewPages:${_periods.first}:${_periods.length}'),
-            controller: _controller,
-            itemCount: _periods.length,
-            onPageChanged: (i) {
-              if (_periods[i] != widget.period) _showPeriod(ref, _periods[i]);
+          child: NotificationListener<ScrollEndNotification>(
+            // The period moves once the cards have settled: the sections below
+            // rebuild with it, and doing that while the page is still sliding
+            // stalls the swipe.
+            onNotification: (_) {
+              final i = _controller.page?.round();
+              if (i != null && _periods[i] != widget.period) _showPeriod(ref, _periods[i]);
+              return false;
             },
-            itemBuilder: (context, i) => _OverviewPage(
-              stats: i == index ? stats : _statsFor(ref, _periods[i], language: widget.language),
-              current: i == index,
-              locale: widget.locale,
-              language: widget.language,
+            child: PageView.builder(
+              key: ValueKey('cfOverviewPages:${_periods.first}:${_periods.length}'),
+              controller: _controller,
+              itemCount: _periods.length,
+              itemBuilder: (context, i) => _OverviewPage(
+                stats: i == index ? stats : _statsFor(ref, _periods[i], language: widget.language),
+                current: i == index,
+                locale: widget.locale,
+                language: widget.language,
+              ),
             ),
           ),
         ),

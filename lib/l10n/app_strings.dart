@@ -390,8 +390,8 @@ class AppStrings {
       _it ? 'Servono spese annuali registrate per stimare il numero FIRE.' : 'Annual expenses are required to estimate the FIRE number.';
   String get fireDialogTitle => _it ? 'Numero FIRE' : 'FIRE number';
   String get fireDialogIntro => _it
-      ? 'Il numero FIRE è il capitale investito che pagherebbe le tue spese annuali per sempre con lo SWR scelto: spese annue stimate ÷ SWR. L\'indicatore mostra quanta parte ne copre già il tuo patrimonio investibile (Net Asset Value senza gli aggiustamenti in uscita, gli immobili e gli alternativi; i fondi pensione contano, i debiti sono sottratti). È un indicatore di progresso, non una simulazione di pensionamento.'
-      : 'The FIRE number is the invested wealth that would pay your yearly expenses for good at the chosen SWR: estimated annual expenses ÷ SWR. The card shows how much of it your investable net worth already covers (Net Asset Value without outflow adjustments, real estate and alternative assets; pension funds count, debts are subtracted). It is a progress metric, not a retirement simulation.';
+      ? 'Il numero FIRE è il capitale investito che pagherebbe le tue spese annuali per sempre con lo SWR scelto: spese degli ultimi 12 mesi ÷ SWR. L\'indicatore mostra quanta parte ne copre già il tuo patrimonio investibile (Net Asset Value senza gli aggiustamenti in uscita, gli immobili e gli alternativi; i fondi pensione contano, i debiti sono sottratti). È un indicatore di progresso, non una simulazione di pensionamento.'
+      : 'The FIRE number is the invested wealth that would pay your yearly expenses for good at the chosen SWR: the expenses of the last 12 months ÷ SWR. The card shows how much of it your investable net worth already covers (Net Asset Value without outflow adjustments, real estate and alternative assets; pension funds count, debts are subtracted). It is a progress metric, not a retirement simulation.';
   String get fireSwrLabel => _it ? 'Tasso di prelievo sicuro (SWR)' : 'Safe Withdrawal Rate (SWR)';
   String get fireSwrHint => _it ? 'es. 2,75 = prelievo del 2,75% l\'anno' : 'e.g. 2.75 = 2.75% per year';
   String get fireNumberLabel => _it ? 'Numero FIRE' : 'FIRE number';
@@ -401,9 +401,7 @@ class AppStrings {
   String kpiFireTarget(String amount) => _it ? 'Obiettivo: $amount' : 'Target: $amount';
   String get fireResetDefault => _it ? 'Ripristina predefinito' : 'Reset default';
   String get fireSwrInvalid => _it ? 'Inserisci un numero positivo' : 'Enter a positive number';
-  String get fireExpensesEstimateLabel => _it ? 'Spese annue stimate' : 'Estimated annual expenses';
-  String get fireProjectedCurrent => _it ? 'Proiezione anno corrente' : 'Current-year projection';
-  String get fireLastYearTotal => _it ? 'Anno precedente' : 'Previous year';
+  String get fireExpensesEstimateLabel => _it ? 'Spese degli ultimi 12 mesi' : 'Expenses of the last 12 months';
   String get dashNoData => _it
       ? 'Nessun dato. Importa transazioni o aggiungi attività per iniziare.'
       : 'No data yet. Import transactions or add assets to get started.';

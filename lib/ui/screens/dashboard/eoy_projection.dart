@@ -121,56 +121,35 @@ class PositionFigureSpan extends TextSpan {
   const PositionFigureSpan({super.text, super.style});
 }
 
-/// Smoothed annual expense estimate for forward-looking KPIs (e.g. FIRE).
+/// The expenses of the last 12 months: the yearly figure behind the Health
+/// tab's monthly expenses and FIRE number. It is real spending over a whole
+/// seasonal cycle, so it neither depends on the current year being
+/// consolidated nor jumps with the calendar.
 ///
-/// The current calendar year is rarely consolidated, so its YTD total skews
-/// any annualised metric. This helper averages the EoY projection for the
-/// current year (scaled from the same period of [prev]) with [prev]'s full
-/// total. Falls back to [prev]'s total when projection is unavailable, and
-/// returns `null` when no usable signal exists.
+/// The window is the same one [incomeOverLastYear] uses: after the same day a
+/// year ago, up to and including [today]. Months inside it count whole; the
+/// month in progress counts as far as it has gone, and the month a year ago
+/// counts for the days after [today]'s day only.
 ///
-/// Returned breakdown reports the components used so callers can show them
-/// in info dialogs.
-class SmoothedAnnualExpenses {
-  /// Final smoothed estimate.
-  final double value;
+/// Null when [years] does not reach back to that month a year ago (less than
+/// 12 months of history) or the window has no expenses: a shorter span would
+/// be passed off as a year.
+double? expensesOverLastYear(Iterable<EoyYear> years, DateTime today) {
+  EoyMonth? monthOf(int year, int month) =>
+      years.where((y) => y.year == year).expand((y) => y.months).where((m) => m.month == month).firstOrNull;
 
-  /// EoY projection for [current], or `null` when not computable.
-  final double? projectedCurrent;
+  final oldest = monthOf(today.year - 1, today.month);
+  if (oldest == null) return null;
 
-  /// Full-year total for [prev], or `null` when [prev] was missing/zero.
-  final double? prevTotal;
-
-  /// How many months of [current] data fed the projection (for display).
-  final int? projectionMonths;
-
-  const SmoothedAnnualExpenses({
-    required this.value,
-    this.projectedCurrent,
-    this.prevTotal,
-    this.projectionMonths,
-  });
-}
-
-SmoothedAnnualExpenses? estimateSmoothedAnnualExpenses({
-  required EoyYear current,
-  EoyYear? prev,
-}) {
-  if (prev != null) {
-    final eoy = computeEoyDetails(current, prev, expenses: true);
-    if (eoy != null && prev.expenses > 0) {
-      return SmoothedAnnualExpenses(
-        value: (eoy.value + prev.expenses) / 2,
-        projectedCurrent: eoy.value,
-        prevTotal: prev.expenses,
-        projectionMonths: eoy.months,
-      );
-    }
-    if (prev.expenses > 0) {
-      return SmoothedAnnualExpenses(value: prev.expenses, prevTotal: prev.expenses);
-    }
+  final daysInOldest = DateTime(today.year - 1, today.month + 1, 0).day;
+  final daysAfterToday = daysInOldest - (today.day < daysInOldest ? today.day : daysInOldest);
+  var total = oldest.expenses * daysAfterToday / daysInOldest;
+  // The 11 whole months after it, up to and including this month so far.
+  for (var i = 1; i <= 12; i++) {
+    final d = DateTime(today.year - 1, today.month + i);
+    total += monthOf(d.year, d.month)?.expenses ?? 0;
   }
-  return null;
+  return total > 0 ? total : null;
 }
 
 /// Build the multi-line EoY explanation rendered in the Savings Rate KPI

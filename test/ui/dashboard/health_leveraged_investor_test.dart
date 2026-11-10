@@ -120,7 +120,7 @@ void main() {
       expect(inKpi(s.kpiDebtToAssets, s.ratingBuono), findsOneWidget);
       expect(inKpi(s.kpiCreditLineUsage, '30.00%'), findsOneWidget);
       expect(inKpi(s.kpiCreditLineUsage, s.ratingBuono), findsOneWidget);
-      // 32,000 of cash over 3,000 a month.
+      // 32,000 of cash over 2,919.35 a month (35,032.26 of expenses over the last 12 months).
       expect(inKpi(s.kpiExpenseCoverage, '11 months'), findsOneWidget);
     } finally {
       await h.unmount(tester);
@@ -161,9 +161,10 @@ void main() {
     await seedLeveraged();
     await h.pump(tester);
     try {
-      // Expenses of 36,000 a year over a 2.75% withdrawal rate; 82,000 of investable net worth covers 6.26% of it.
-      expect(inKpi(s.kpiFireNumber, '6.26%'), findsOneWidget);
-      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,309,090.91 €')), findsOneWidget);
+      // Expenses of 35,032.26 over the last 12 months (on 10 March 2026: 21/31 of March 2025, then 3,000 a month
+      // to February 2026) over a 2.75% withdrawal rate; 82,000 of investable net worth covers 6.44% of it.
+      expect(inKpi(s.kpiFireNumber, '6.44%'), findsOneWidget);
+      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,273,900.29 €')), findsOneWidget);
       expect(inKpi(s.kpiFireNumber, s.ratingScarso), findsOneWidget);
       expect(find.text('FI Target Progress'), findsNothing);
     } finally {
@@ -175,8 +176,8 @@ void main() {
     await seedLeveraged();
     await h.pump(tester, isPrivate: true);
     try {
-      expect(masked(inKpi(s.kpiFireNumber, '1,309,090.91 €')), isTrue, reason: 'an amount is position size');
-      expect(masked(inKpi(s.kpiFireNumber, '6.26%')), isFalse, reason: 'a percentage is shape');
+      expect(masked(inKpi(s.kpiFireNumber, '1,273,900.29 €')), isTrue, reason: 'an amount is position size');
+      expect(masked(inKpi(s.kpiFireNumber, '6.44%')), isFalse, reason: 'a percentage is shape');
       for (final (kpi, value) in [
         (s.kpiLiquidityRatio, '39.02%'),
         (s.kpiInvestmentWeight, '98.21%'),
@@ -216,10 +217,10 @@ void main() {
     try {
       await h.openInfo(tester, s.kpiExpenseCoverage);
       final text = h.dialogText(tester);
-      expect(text, contains('32,000.00 / 3,000.00'));
-      expect(text, contains('Monthly Expenses = estimated annual expenses / 12: 36,000.00 / 12'));
+      expect(text, contains('32,000.00 / 2,919.35'));
+      expect(text, contains('Monthly Expenses = estimated annual expenses / 12: 35,032.26 / 12'));
       expect(text, contains('Cash = Accounts + Money Market: -28,000.00 + 60,000.00'));
-      expect(text, contains('Unused Credit Lines: 70,000.00 (about 23 more months, not counted)'));
+      expect(text, contains('Unused Credit Lines: 70,000.00 (about 24 more months, not counted)'));
       await h.tapDialogButton(tester, s.close);
     } finally {
       await h.unmount(tester);

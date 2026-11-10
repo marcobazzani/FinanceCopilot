@@ -50,13 +50,6 @@ void main() {
     expect(d.partial, isNull);
   });
 
-  test('the smoothed yearly expenses follow the projection', () {
-    final r = estimateSmoothedAnnualExpenses(current: current(), prev: prev())!;
-    const projected = 24000 * 22400 / (10 * 2000 + 2000 * 5 / 30);
-    expect(r.projectedCurrent, closeTo(projected, 1e-6));
-    expect(r.value, closeTo((projected + 24000) / 2, 1e-6));
-  });
-
   group('the explanation says how the month in progress was counted', () {
     String text(AppStrings s, String locale) => buildEoyExplanationSpan(
       current: current(),

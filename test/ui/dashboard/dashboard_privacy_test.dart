@@ -234,7 +234,7 @@ void main() {
     }
   });
 
-  testWidgets('FIRE dialog: the expense estimate, its components and the FI target are masked; the coverage stays readable', (tester) async {
+  testWidgets('FIRE dialog: the expenses of the last 12 months and the FI target are masked; the coverage stays readable', (tester) async {
     await seed();
     await pumpDashboard(tester);
     try {
@@ -250,9 +250,7 @@ void main() {
       // The dialog's title and its FIRE number row read the same: the row is the later one.
       final fireNumberRow = find.descendant(of: find.byType(AlertDialog), matching: find.text('FIRE number')).last;
       for (final label in [
-        find.text('Estimated annual expenses'),
-        find.textContaining('Current-year projection'),
-        find.text('  Previous year'),
+        find.text('Expenses of the last 12 months'),
         fireNumberRow,
         find.text('Investable net worth'),
         find.text('Still to go'),

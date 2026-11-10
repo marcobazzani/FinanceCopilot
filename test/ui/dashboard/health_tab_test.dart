@@ -74,12 +74,13 @@ void main() {
       }
     });
 
-    testWidgets('FIRE dialog: the months behind the projection are spelled out', (tester) async {
+    testWidgets('FIRE dialog: the expenses of the last 12 months, in Italian', (tester) async {
       await h.seed();
       await h.pump(tester, language: 'it', locale: 'it_IT');
       try {
         await h.openInfo(tester, 'Numero FIRE');
-        expect(find.text('  Proiezione anno corrente (2 mesi)'), findsOneWidget);
+        expect(find.text('Spese degli ultimi 12 mesi'), findsOneWidget);
+        expect(find.textContaining('Proiezione'), findsNothing);
         await h.tapDialogButton(tester, 'Annulla');
       } finally {
         await h.unmount(tester);
@@ -98,7 +99,8 @@ void main() {
       expect(h.dialogText(tester), contains('Weighted Avg TER\n0.20%'));
       await h.tapDialogButton(tester, 'Close');
       await h.openInfo(tester, 'FIRE number');
-      expect(find.text('  Current-year projection (2m)'), findsOneWidget);
+      expect(find.text('Expenses of the last 12 months'), findsOneWidget);
+      expect(find.textContaining('projection'), findsNothing);
       await h.tapDialogButton(tester, 'Cancel');
     } finally {
       await h.unmount(tester);

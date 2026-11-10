@@ -130,6 +130,9 @@ void main() {
   group('across database files', () {
     late Directory dir;
 
+    // Two databases at once, by design: the open one and the backup file read.
+    setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
+
     setUp(() async => dir = await Directory.systemTemp.createTemp('fc_edit_log_'));
     tearDown(() => dir.delete(recursive: true));
 

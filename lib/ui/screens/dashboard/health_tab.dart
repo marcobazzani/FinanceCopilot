@@ -58,23 +58,19 @@ class _FinancialHealthTab extends ConsumerWidget {
         final sheet = allData == null ? null : computeHealthBalanceSheet(charts: userCharts, allData: allData, activeAssets: activeAssets);
 
         // The current year for savings. The monthly expenses of the coverage and
-        // the FIRE number share one yearly estimate: the current calendar year is
-        // not consolidated, so it is smoothed as avg(EoY projection, full last
-        // year). With no prior year the FIRE number is N/A — using YTD-only
-        // would understate expenses and overstate FIRE progress — and the
-        // coverage falls back to the average of this year, saying so.
+        // the FIRE number share one yearly figure: the expenses of the last 12
+        // months. With less than a year of history the FIRE number is N/A —
+        // a shorter span would understate expenses and overstate FIRE
+        // progress — and the coverage falls back to the average of this year,
+        // saying so.
         var annualIncome = 0.0, annualSavings = 0.0, thisYearMonthlyExpenses = 0.0;
-        SmoothedAnnualExpenses? smoothed;
+        double? yearlyExpenses;
         if (ieData != null && ieData.years.isNotEmpty) {
           final current = ieData.years.last;
-          final prev = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : null;
           annualIncome = current.income;
           annualSavings = current.savings;
           thisYearMonthlyExpenses = current.monthlyExpenses > 0 ? current.monthlyExpenses : 0;
-          smoothed = estimateSmoothedAnnualExpenses(
-            current: _toEoyYear(current),
-            prev: prev == null ? null : _toEoyYear(prev),
-          );
+          yearlyExpenses = expensesOverLastYear(ieData.years.map(_toEoyYear), today);
         }
         final rollingIncome = ieData == null ? 0.0 : incomeOverLastYear(ieData.incomeRecords, today);
 
@@ -83,7 +79,7 @@ class _FinancialHealthTab extends ConsumerWidget {
           annualIncome: annualIncome,
           annualSavings: annualSavings,
           rollingIncome: rollingIncome,
-          estimatedAnnualExpenses: smoothed?.value,
+          estimatedAnnualExpenses: yearlyExpenses,
           thisYearMonthlyExpenses: thisYearMonthlyExpenses,
           s: s,
           locale: locale,
@@ -111,7 +107,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         // of it the investable net worth covers. Its info icon opens the FIRE
         // dialog (see [_showFireDialog]), which spells out the figures.
         final investableNetWorth = sheet?.investableNetWorth ?? 0;
-        final fireExpenses = smoothed?.value ?? 0;
+        final fireExpenses = yearlyExpenses ?? 0;
         final fire = computeFire(netWorth: investableNetWorth, annualExpenses: fireExpenses, swrPct: swrPct);
         final moneyFmt = fmt.amountFormat(locale);
         final currency = currencySymbol(allData?.baseCurrency ?? ieData?.baseCurrency ?? '');
@@ -268,7 +264,6 @@ class _FinancialHealthTab extends ConsumerWidget {
                                       locale: locale,
                                       netWorth: investableNetWorth,
                                       annualExpenses: fireExpenses,
-                                      smoothed: smoothed,
                                       currentSwr: swrPct,
                                     )
                                   : null,
@@ -744,7 +739,6 @@ Future<void> _showFireDialog({
   required String locale,
   required double netWorth,
   required double annualExpenses,
-  required SmoothedAnnualExpenses? smoothed,
   required double currentSwr,
 }) => showDialog<void>(
   context: context,
@@ -753,7 +747,6 @@ Future<void> _showFireDialog({
     locale: locale,
     netWorth: netWorth,
     annualExpenses: annualExpenses,
-    smoothed: smoothed,
     currentSwr: currentSwr,
   ),
 );
@@ -766,7 +759,6 @@ class _FireDialog extends ConsumerStatefulWidget {
   final String locale;
   final double netWorth;
   final double annualExpenses;
-  final SmoothedAnnualExpenses? smoothed;
   final double currentSwr;
 
   const _FireDialog({
@@ -774,7 +766,6 @@ class _FireDialog extends ConsumerStatefulWidget {
     required this.locale,
     required this.netWorth,
     required this.annualExpenses,
-    required this.smoothed,
     required this.currentSwr,
   });
 
@@ -816,7 +807,6 @@ class _FireDialogState extends ConsumerState<_FireDialog> {
   @override
   Widget build(BuildContext context) {
     final s = widget.s;
-    final smoothed = widget.smoothed;
     final swrFmt = _swrFmt;
     final amtFmt = fmt.amountFormat(widget.locale);
     final parsed = _typedSwr;
@@ -861,24 +851,6 @@ class _FireDialogState extends ConsumerState<_FireDialog> {
                   label: s.fireExpensesEstimateLabel,
                   value: amtFmt.format(widget.annualExpenses),
                 ),
-                if (smoothed != null && smoothed.projectedCurrent != null) ...[
-                  const SizedBox(height: 2),
-                  _FireDialogRow(
-                    label:
-                        '  ${s.fireProjectedCurrent}'
-                        '${smoothed.projectionMonths != null ? ' ${s.fireProjectionMonths(smoothed.projectionMonths!)}' : ''}',
-                    value: amtFmt.format(smoothed.projectedCurrent!),
-                    subtle: true,
-                  ),
-                ],
-                if (smoothed != null && smoothed.prevTotal != null) ...[
-                  const SizedBox(height: 2),
-                  _FireDialogRow(
-                    label: '  ${s.fireLastYearTotal}',
-                    value: amtFmt.format(smoothed.prevTotal!),
-                    subtle: true,
-                  ),
-                ],
                 const SizedBox(height: 8),
                 _FireDialogRow(label: s.fireNumberLabel, value: amtFmt.format(preview.fiNumber)),
                 const SizedBox(height: 4),
@@ -923,26 +895,23 @@ class _FireDialogState extends ConsumerState<_FireDialog> {
 class _FireDialogRow extends StatelessWidget {
   final String label;
   final String value;
-  final bool subtle;
 
   /// [value] is position size (expenses, the FI target), masked in privacy
   /// mode. False for the coverage percentage: shape, not magnitude.
   final bool masked;
-  const _FireDialogRow({required this.label, required this.value, this.subtle = false, this.masked = true});
+  const _FireDialogRow({required this.label, required this.value, this.masked = true});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final valStyle = subtle
-        ? TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)
-        : const TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+    const valStyle = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
             style: TextStyle(
-              fontSize: subtle ? 11 : 12,
+              fontSize: 12,
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
