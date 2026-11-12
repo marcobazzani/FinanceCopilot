@@ -987,4 +987,255 @@ void main() {
       }
     });
   });
+
+  // 2026 to 10 March against the same days of 2025 (1 January – 10 March):
+  // Conad 560 against 400 (the 310 of 20 March 2025 is past those days), fuel
+  // 100 against nothing; Esselunga, added here, 50 on 20 February 2025 and
+  // nothing since: a supplier dropped. Groceries: 560 against 450.
+  group('the Expenses drill-down: steps in AND, values of a step in OR, each against the days compared with', () {
+    Future<void> seedWithEsselunga() async {
+      await seed();
+      final account = (await h.db.select(h.db.accounts).get()).single.id;
+      final day = DateTime(2025, 2, 20);
+      await h.db
+          .into(h.db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: account,
+              operationDate: day,
+              valueDate: day,
+              amount: -50,
+              description: const Value('ESSELUNGA 2025-02-20'),
+              categoryId: Value(groceries),
+              merchantKey: const Value('ESSELUNGA'),
+              counterparty: const Value('Esselunga'),
+              entryKind: const Value(BankEntryKind.cardPayment),
+            ),
+          );
+    }
+
+    Future<void> openExpenses(WidgetTester tester, {bool isPrivate = false}) async {
+      await h.pump(tester, isPrivate: isPrivate);
+      await h.openTab(tester, 'Cash Flow');
+      await span(tester, 'year');
+      await tap(tester, find.byKey(const Key('cfExpensesCard')));
+    }
+
+    String chips(WidgetTester tester) => [
+      for (final c in tester.widgetList<InputChip>(
+        find.descendant(of: find.byKey(const Key('cfFilterSteps')), matching: find.byType(InputChip)),
+      ))
+        tester.widgetList<Text>(find.descendant(of: find.byWidget(c), matching: find.byType(Text))).first.data,
+    ].join(' | ');
+
+    testWidgets('each row tells its change against the same days compared with; a row those days had alone is listed too', (tester) async {
+      await seedWithEsselunga();
+      final account = (await h.db.select(h.db.accounts).get()).single.id;
+      final day = DateTime(2026, 2, 1);
+      await h.db
+          .into(h.db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: account,
+              operationDate: day,
+              valueDate: day,
+              amount: -30,
+              description: const Value('MYSTERY 2026-02-01'),
+              merchantKey: const Value('MYSTERY'),
+              counterparty: const Value('Mystery'),
+              entryKind: const Value(BankEntryKind.cardPayment),
+            ),
+          );
+      try {
+        await openExpenses(tester);
+        expect(inKey('cfSpendingCategory:$groceries', '▲ 24%'), findsOneWidget, reason: '560 against 400 at Conad and 50 at Esselunga');
+        expect(inKey('cfSpendingCategory:$fuel', '▲ ${s.cfChangeNew}'), findsOneWidget, reason: 'no fuel in those days of 2025');
+        expect(inKey('cfSpendingCategory:$groceries', s.cfTransactions(3)), findsOneWidget, reason: 'the count stays its own line');
+
+        // Groceries: its merchants, Esselunga at nothing now and down all the way.
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(inKey('cfSpendingMerchant:CONAD', '▲ 40%'), findsOneWidget);
+        expect(inKey('cfSpendingMerchant:ESSELUNGA', '▼ 100%'), findsOneWidget);
+        expect(inKey('cfSpendingMerchant:ESSELUNGA', s.cfTransactions(0)), findsOneWidget);
+        final merchants = [
+          for (final k in ['CONAD', 'ESSELUNGA']) tester.getTopLeft(find.byKey(Key('cfSpendingMerchant:$k'))).dy,
+        ];
+        expect(merchants, [...merchants]..sort(), reason: 'the biggest now first');
+
+        // By merchant, a merchant nothing categorizes yet: its own badge, new.
+        await tap(tester, find.byKey(const Key('cfFilterClear')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByMerchant).last);
+        await h.settle(tester);
+        expect(inKey('cfSpendingMerchant:MYSTERY', '▲ ${s.cfChangeNew}'), findsOneWidget);
+        expect(
+          find.descendant(of: find.byKey(const Key('cfSpendingMerchant:MYSTERY')), matching: find.byIcon(Icons.storefront_outlined)),
+          findsOneWidget,
+        );
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a category, then a merchant in it: the steps narrow; ✕ drops one; back drops the last', (tester) async {
+      await seedWithEsselunga();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · Groceries');
+        expect(chips(tester), 'Groceries');
+        // Its merchants above its rows, the categories gone.
+        expect(find.byKey(const Key('cfSpendingMerchant:CONAD')), findsOneWidget);
+        expect(find.byKey(Key('cfSpendingCategory:$fuel')), findsNothing);
+
+        await tap(tester, find.byKey(const Key('cfSpendingMerchant:CONAD')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · Groceries › Conad');
+        expect(chips(tester), 'Groceries | Conad');
+        expect(find.byKey(const Key('cfSpendingMerchant:CONAD')), findsNothing, reason: 'narrowed to merchants: their rows only');
+        expect(inKey('cfStatTotal', money.format(560)), findsOneWidget);
+        // Against the same days of 2025: 560 against 400, of 710 in all 2025.
+        expect(inKey('cfFilterVs', '▲ ${money.format(160)}'), findsOneWidget);
+        expect(inKey('cfFilterVs', '(${money.format(400)} → ${money.format(710)})'), findsOneWidget);
+
+        // Back drops the last step, and the screen stays.
+        await tester.state<NavigatorState>(find.byType(Navigator).last).maybePop();
+        await h.settle(tester);
+        expect(chips(tester), 'Groceries');
+        expect(find.byKey(const Key('cfStatTitle')), findsOneWidget);
+
+        // ✕ on a step drops that one only; the grouping of the whole list is its own.
+        await tap(tester, find.byKey(const Key('cfSpendingMerchant:CONAD')), scroll: true);
+        await tap(tester, find.descendant(of: find.byKey(const Key('cfFilterStep:0')), matching: find.byIcon(Icons.close)), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · Conad');
+        await tap(tester, find.byKey(const Key('cfFilterClear')), scroll: true);
+        expect(screenTitle(tester), '${s.legendExpenses} · ${s.cfThisYear}');
+        expect(find.byKey(Key('cfSpendingCategory:$fuel')), findsOneWidget, reason: 'cleared, the list is by category again');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('a step\'s values picked: a supplier dropped joins the one kept, on both sides of the comparison', (tester) async {
+      await seedWithEsselunga();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfSpendingMerchant:CONAD')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfFilterStep:1')), scroll: true);
+        // The merchants of groceries, now and in the days compared with.
+        expect(find.byKey(const Key('cfStepValue:CONAD')), findsOneWidget);
+        expect(find.byKey(const Key('cfStepValue:ESSELUNGA')), findsOneWidget);
+        expect(find.byKey(const Key('cfStepValue:DISTRIBUTOREIP')), findsNothing, reason: 'fuel is not groceries');
+        await tap(tester, find.byKey(const Key('cfStepValue:ESSELUNGA')));
+        await tap(tester, find.byKey(const Key('cfStepValuesDone')));
+        expect(chips(tester), 'Groceries | Conad, Esselunga');
+        expect(inKey('cfStatTotal', money.format(560)), findsOneWidget);
+        expect(inKey('cfFilterVs', '(${money.format(450)} → ${money.format(760)})'), findsOneWidget, reason: '400 + 50 then, 710 + 50 in all');
+
+        // None picked: the step goes.
+        await tap(tester, find.byKey(const Key('cfFilterStep:1')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfStepValue:CONAD')));
+        await tap(tester, find.byKey(const Key('cfStepValue:ESSELUNGA')));
+        await tap(tester, find.byKey(const Key('cfStepValuesDone')));
+        expect(chips(tester), 'Groceries');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('two slices of the ring: one step keeping both; the narrowed list regroups; a step by account or currency picks among those', (
+      tester,
+    ) async {
+      await seedWithEsselunga();
+      final account = (await h.db.select(h.db.accounts).get()).single;
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(const Key('cfChartMode:ring')), scroll: true);
+        void touch(int i) {
+          final ring = tester.widget<PieChart>(find.byType(PieChart)).data;
+          ring.pieTouchData.touchCallback!(
+            FlTapUpEvent(TapUpDetails(kind: PointerDeviceKind.touch)),
+            PieTouchResponse(touchLocation: Offset.zero, touchedSection: PieTouchedSection(ring.sections[i], i, 0, 0)),
+          );
+        }
+
+        touch(0);
+        await h.settle(tester);
+        touch(1);
+        await h.settle(tester);
+        expect(chips(tester), 'Groceries, Car, fuel & tolls');
+        expect(inKey('cfStatTotal', money.format(660)), findsOneWidget, reason: '560 of groceries and 100 of fuel');
+
+        // The list under it by account: the one account, at 660.
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByAccount).last);
+        await h.settle(tester);
+        expect(inKey('cfSpendingAccount:${account.id}', money.format(660)), findsOneWidget);
+        await tap(tester, find.byKey(Key('cfSpendingAccount:${account.id}')), scroll: true);
+        expect(chips(tester), 'Groceries, Car, fuel & tolls | ${account.name}');
+        await tap(tester, find.byKey(const Key('cfFilterStep:1')), scroll: true);
+        expect(find.byKey(Key('cfStepValue:${account.id}')), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfStepValuesDone')));
+
+        // By currency, the same way.
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByCurrency).last);
+        await h.settle(tester);
+        await tap(tester, find.byKey(const Key('cfSpendingCurrency:EUR')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfFilterStep:2')), scroll: true);
+        expect(find.byKey(const Key('cfStepValue:EUR')), findsOneWidget);
+        await tap(tester, find.byKey(const Key('cfStepValuesDone')));
+        expect(chips(tester), 'Groceries, Car, fuel & tolls | ${account.name} | EUR');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('narrowed to a merchant, a row opens its classification card', (tester) async {
+      await seedWithEsselunga();
+      final conad = (await (h.db.select(h.db.transactions)..where((t) => t.amount.equals(-120))).getSingle()).id;
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfSpendingMerchant:CONAD')), scroll: true);
+        await tap(tester, find.byKey(Key('cfFilterTx:$conad')), scroll: true);
+        expect(find.text(s.classifyTransaction), findsOneWidget);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('on Savings a row opens its transactions, against the same days too', (tester) async {
+      await seedWithEsselunga();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfSavingsCard')));
+        expect(inKey('cfSpendingCategory:$groceries', '▲ 24%'), findsOneWidget);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(find.text('CONAD 2026-01-10'), findsOneWidget);
+        expect(find.byKey(const Key('cfFilterSteps')), findsNothing, reason: 'Savings opens the rows, it is not narrowed');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('privacy mode: what a row was then is masked; its change, in percent, is not', (tester) async {
+      await seedWithEsselunga();
+      try {
+        await openExpenses(tester, isPrivate: true);
+        expect(masked(inKey('cfSpendingCategory:$groceries', money.format(450))), isTrue);
+        expect(masked(inKey('cfSpendingCategory:$groceries', '▲ 24%')), isFalse);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        await tap(tester, find.byKey(const Key('cfFilterStep:0')), scroll: true);
+        // The categories to pick among: Groceries at 560.
+        final value = find.byKey(Key('cfStepValue:$groceries'));
+        expect(masked(find.descendant(of: value, matching: find.text(money.format(560)))), isTrue);
+        expect(masked(find.descendant(of: value, matching: find.text('Groceries'))), isFalse);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+  });
 }

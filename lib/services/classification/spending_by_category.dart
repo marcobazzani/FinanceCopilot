@@ -210,9 +210,23 @@ class SpendingByCategoryData {
 
   /// What the days [from] to [to] spent, per category, merchant and saving
   /// plan: the same sums as a month's, over any run of days.
-  SpendingPeriod sumOfDays(DateTime from, DateTime to) {
+  SpendingPeriod sumOfDays(DateTime from, DateTime to) => _sumOf(entriesBetween(from, to));
+
+  /// The entries of every run of days in [ranges] (each end included), in
+  /// the order given.
+  Iterable<SpendingEntry> entriesIn(Iterable<({DateTime start, DateTime end})> ranges) sync* {
+    for (final r in ranges) {
+      yield* entriesBetween(r.start, r.end);
+    }
+  }
+
+  /// What the runs of days in [ranges] spent together, summed as
+  /// [sumOfDays] sums one run: the days a period is compared against.
+  SpendingPeriod sumOfRanges(Iterable<({DateTime start, DateTime end})> ranges) => _sumOf(entriesIn(ranges));
+
+  static SpendingPeriod _sumOf(Iterable<SpendingEntry> entries) {
     final sums = _PeriodSums();
-    for (final e in entriesBetween(from, to)) {
+    for (final e in entries) {
       if (e.plan case final plan?) {
         sums.plans[plan.eventId] = (eventId: plan.eventId, name: plan.name, amount: (sums.plans[plan.eventId]?.amount ?? 0) + e.amount);
         continue;

@@ -186,6 +186,11 @@ class _PeriodStats {
   final DateTime? otherStart;
   final DateTime? otherEnd;
 
+  /// The days of the other period each part was set against (the same days
+  /// as the part's so far): what a narrowed figure or a list row is compared
+  /// with. Empty without a comparison.
+  final List<_Days> comparedDays;
+
   /// Running totals, one figure a day: the period's so far, the other
   /// period's whole.
   final List<double> expensesRun;
@@ -225,6 +230,7 @@ class _PeriodStats {
     required this.notes,
     required this.otherStart,
     required this.otherEnd,
+    required this.comparedDays,
     required this.expensesRun,
     required this.incomeRun,
     required this.expensesRunBefore,
@@ -278,6 +284,7 @@ class _PeriodStats {
     ComparedFigure? expensesVs, incomeVs, savingsVs;
     String? vsLabel;
     final notes = <String>[];
+    final comparedDays = <_Days>[];
     if (other != null && started && spending != null && ieData != null) {
       final units = period.units, baseUnits = other.units;
       final expenseUnits = <ComparedUnit>[], incomeUnits = <ComparedUnit>[], savingUnits = <ComparedUnit>[];
@@ -286,6 +293,7 @@ class _PeriodStats {
       for (var i = 0; i < units.length && i < baseUnits.length; i++) {
         final same = sameDays(units[i], baseUnits[i], today);
         if (same == null) continue;
+        comparedDays.add(same);
         final to = units[i].end.isAfter(day) ? day : units[i].end;
         firstBase ??= baseUnits[i];
         lastBase = baseUnits[i];
@@ -368,6 +376,7 @@ class _PeriodStats {
       notes: notes,
       otherStart: vsLabel == null ? null : otherDays?.start,
       otherEnd: vsLabel == null ? null : otherDays?.end,
+      comparedDays: vsLabel == null ? const [] : comparedDays,
       expensesRun: started && ieData != null ? _expensesRunning(ieData, start, until) : const [],
       incomeRun: started && ieData != null ? _incomeRunning(ieData, start, until) : const [],
       expensesRunBefore: vsLabel == null || otherDays == null || ieData == null

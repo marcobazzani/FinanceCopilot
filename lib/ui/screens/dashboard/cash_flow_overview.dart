@@ -14,6 +14,55 @@ enum _FilterKind { category, merchant, account, currency }
 
 typedef _SpendFilter = ({_FilterKind kind, Object? key, String label});
 
+/// One step of the Expenses drill-down: a kind and the values it keeps, each
+/// with its name. The values of a step add up (one merchant or another: a
+/// supplier and the one that replaced it); the steps narrow one another (a
+/// category, then merchants in it).
+typedef _FilterStep = ({_FilterKind kind, Map<Object?, String> keys});
+
+/// Whether [e] matches a value of [st].
+bool _keepsStep(_FilterStep st, SpendingEntry e) => st.keys.keys.any((k) => _keeps((kind: st.kind, key: k, label: ''), e));
+
+/// Whether [e] matches every step of [steps].
+bool _keepsAll(List<_FilterStep> steps, SpendingEntry e) => steps.every((st) => _keepsStep(st, e));
+
+/// The steps with [f] added: a value of a kind already narrowed joins that
+/// step; another kind is a new step after the others.
+List<_FilterStep> _withFilter(List<_FilterStep> steps, _SpendFilter f) {
+  final i = steps.indexWhere((x) => x.kind == f.kind);
+  if (i < 0) {
+    return [
+      ...steps,
+      (kind: f.kind, keys: {f.key: f.label}),
+    ];
+  }
+  return [...steps]..[i] = (kind: f.kind, keys: {...steps[i].keys, f.key: f.label});
+}
+
+/// What the list groups by once [steps] narrow the screen: the categories
+/// until one is picked, then the merchants in it; [current] once both are.
+_SpentBy _nextGrouping(List<_FilterStep> steps, _SpentBy current) {
+  final kinds = {for (final st in steps) st.kind};
+  if (!kinds.contains(_FilterKind.category)) return _SpentBy.category;
+  if (!kinds.contains(_FilterKind.merchant)) return _SpentBy.merchant;
+  return current;
+}
+
+/// What [e] is under [kind] — its category, merchant, account or currency —
+/// with [names] to name it; null when it has none (a row without a merchant,
+/// a saving plan's step without a category or an account).
+({Object? key, String name})? _valueOf(
+  _FilterKind kind,
+  SpendingEntry e, {
+  required String Function(int? category) categoryName,
+  required Map<int, String> accounts,
+}) => switch (kind) {
+  _FilterKind.category => e.plan != null ? null : (key: e.categoryId, name: categoryName(e.categoryId)),
+  _FilterKind.merchant => e.merchantKey == null ? null : (key: e.merchantKey, name: e.merchantName ?? e.merchantKey!),
+  _FilterKind.account => e.accountId == null ? null : (key: e.accountId, name: accounts[e.accountId] ?? '#${e.accountId}'),
+  _FilterKind.currency => (key: e.currency, name: e.currency),
+};
+
 /// Whether [e] is one of the spending rows [f] keeps. A saving plan's steps
 /// have no category, merchant or account.
 bool _keeps(_SpendFilter f, SpendingEntry e) => switch (f.kind) {
@@ -615,9 +664,61 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
   /// The bar picked and the period it is a part of; null: the whole period.
   ({CashFlowPeriod period, int index})? _picked;
 
-  /// What the Expenses screen is narrowed to (a list row or a ring slice
-  /// tapped); it stays across chart modes, spans and periods. Null: all.
-  _SpendFilter? _filter;
+  /// What the Expenses screen is narrowed to (list rows or ring slices
+  /// tapped, values added on a step), in the order picked; it stays across
+  /// chart modes, spans and periods. Empty: all.
+  List<_FilterStep> _steps = const [];
+
+  void _addFilter(_SpendFilter f) => setState(() {
+    _steps = _withFilter(_steps, f);
+    _narrowBy = _nextGrouping(_steps, _narrowBy);
+  });
+
+  /// How the list under a narrowed screen groups its rows: what the next
+  /// step picks among. The whole screen's list keeps its own grouping.
+  _SpentBy _narrowBy = _SpentBy.category;
+
+  void _removeStep(int i) => setState(() => _steps = [..._steps]..removeAt(i));
+
+  /// Picks the values of step [i] among those the other steps leave, in the
+  /// period and in the days it is compared with: a merchant paid only last
+  /// year can join the comparison. None picked removes the step.
+  Future<void> _editStep(int i, SpendingByCategoryData spending, _PeriodStats stats, Map<int, String> accounts) async {
+    final s = ref.read(appStringsProvider);
+    final byId = ref.read(categoriesByIdProvider);
+    final step = _steps[i];
+    final others = [..._steps]..removeAt(i);
+    final now = <Object?, double>{}, before = <Object?, double>{}, names = <Object?, String>{};
+    void collect(Iterable<SpendingEntry> rows, Map<Object?, double> into) {
+      for (final e in rows) {
+        if (!_keepsAll(others, e)) continue;
+        final v = _valueOf(step.kind, e, categoryName: (id) => categoryLabelFor(id, byId, s), accounts: accounts);
+        if (v == null) continue;
+        into[v.key] = (into[v.key] ?? 0) + e.amount;
+        names[v.key] ??= v.name;
+      }
+    }
+
+    collect(spending.entriesBetween(stats.start, stats.until), now);
+    collect(spending.entriesIn(stats.comparedDays), before);
+    double both(Object? k) => (now[k] ?? 0) + (before[k] ?? 0);
+    final keys = names.keys.toList()..sort((a, b) => both(b).compareTo(both(a)));
+    final picked = await showDialog<Map<Object?, String>>(
+      context: context,
+      builder: (_) => _StepValuesDialog(
+        keys: keys,
+        names: names,
+        now: now,
+        before: stats.comparedDays.isEmpty ? null : before,
+        vsLabel: stats.vsLabel,
+        picked: step.keys,
+        locale: widget.locale,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _steps = [..._steps]..[i] = (kind: step.kind, keys: picked));
+    if (picked.isEmpty) _removeStep(i);
+  }
 
   /// How the Expenses list groups its rows; it stays as the screen changes
   /// around it, a filter set and cleared included.
@@ -683,8 +784,10 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
     };
     // Narrowed to a category, merchant, account or currency: the spending rows
     // it keeps — over the period, each part, and the period compared with.
-    final filter = stat == _Stat.expenses && spending != null ? _filter : null;
-    bool keeps(SpendingEntry e) => _keeps(filter!, e);
+    final filter = stat == _Stat.expenses && spending != null && _steps.isNotEmpty
+        ? (kind: _steps.last.kind, key: _steps.last.keys.keys.first, label: _steps.map((st) => st.keys.values.join(', ')).join(' › '))
+        : null;
+    bool keeps(SpendingEntry e) => _keepsAll(_steps, e);
     final day = dayOf(today);
     DateTime upTo(DateTime end) => end.isAfter(day) ? day : end;
     final narrowParts = filter == null
@@ -714,6 +817,33 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
     };
 
     final ringCategories = shown.spending.byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final narrowNow = filter == null ? null : spending!.runningBetween(stats.start, stats.until, where: keeps);
+    final narrowBefore = filter == null || stats.otherStart == null || stats.otherEnd == null
+        ? null
+        : spending!.runningBetween(stats.otherStart!, stats.otherEnd!, where: keeps);
+    // Narrowed, the figure against the same days of the period compared with
+    // (as the whole Expenses are), and that period's whole.
+    final narrowVs = filter == null || narrowTotal == null || stats.comparedDays.isEmpty || narrowBefore == null
+        ? null
+        : (
+            now: narrowTotal,
+            before: spending!.entriesIn(stats.comparedDays).where(keeps).fold(0.0, (a, e) => a + e.amount),
+            whole: narrowBefore.isEmpty ? 0.0 : narrowBefore.last,
+          );
+    final accounts = {for (final a in ref.watch(accountsProvider).value ?? const <Account>[]) a.id: a.name};
+    final stepCategory = _steps.where((x) => x.kind == _FilterKind.category).firstOrNull;
+    // Narrowed to merchants, the list is their rows; before, what the next
+    // step would pick among, above the rows.
+    final breakdown = !_steps.any((x) => x.kind == _FilterKind.merchant);
+    final narrowedData = filter == null
+        ? null
+        : SpendingByCategoryData(
+            years: spending!.years,
+            currentYear: spending.currentYear,
+            fxExcluded: spending.fxExcluded,
+            baseCurrency: spending.baseCurrency,
+            entries: spending.entries.where(keeps).toList(),
+          );
 
     Widget chart() {
       if (stat == _Stat.savings) {
@@ -726,11 +856,6 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
         );
       }
       final spent = stat == _Stat.expenses;
-      final narrowNow = filter == null ? null : spending!.runningBetween(stats.start, stats.until, where: keeps);
-      final (otherStart, otherEnd) = (stats.otherStart, stats.otherEnd);
-      final narrowBefore = filter == null || otherStart == null || otherEnd == null
-          ? null
-          : spending!.runningBetween(otherStart, otherEnd, where: keeps);
       return switch (_mode) {
         _ChartMode.running => _RunningChart(
           now: narrowNow ?? (spent ? stats.expensesRun : stats.incomeRun),
@@ -770,172 +895,350 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
             for (final p in shown.spending.savingPlans) (value: p.amount, color: Colors.amber.shade700),
           ],
           // A category picked stands out; tapping a slice picks its category.
-          highlight: filter?.kind == _FilterKind.category ? ringCategories.indexWhere((e) => e.key == filter!.key) : null,
+          highlight: stepCategory == null ? null : ringCategories.indexWhere((e) => stepCategory.keys.containsKey(e.key)),
           onTap: (i) {
             if (i >= ringCategories.length) return;
             final id = ringCategories[i].key;
-            setState(() => _filter = (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)));
+            _addFilter((kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)));
           },
         ),
       };
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        actions: [
-          if (stat != _Stat.savings)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: _ModeToggle(
-                mode: _mode,
-                ring: stat == _Stat.expenses,
-                onChanged: (m) => setState(() {
-                  _mode = m;
-                  _picked = null;
-                }),
-              ),
-            ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: title,
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      TextSpan(
-                        text: ' · ${filter?.label ?? stats.label}',
-                        style: theme.textTheme.titleLarge?.copyWith(color: scheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                  key: const Key('cfStatTitle'),
+    return PopScope(
+      canPop: _steps.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _steps.isNotEmpty) _removeStep(_steps.length - 1);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          actions: [
+            if (stat != _Stat.savings)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: _ModeToggle(
+                  mode: _mode,
+                  ring: stat == _Stat.expenses,
+                  onChanged: (m) => setState(() {
+                    _mode = m;
+                    _picked = null;
+                  }),
                 ),
               ),
-              IconButton(
-                tooltip: s.cfPreviousPeriodTooltip,
-                icon: const Icon(Icons.chevron_left),
-                onPressed: period.canStep(-1, first, today) ? () => _showPeriod(ref, period.shifted(-1)) : null,
-              ),
-              IconButton(
-                tooltip: s.cfNextPeriodTooltip,
-                icon: const Icon(Icons.chevron_right),
-                onPressed: period.canStep(1, first, today) ? () => _showPeriod(ref, period.shifted(1)) : null,
-              ),
-            ],
-          ),
-          _statAmount(
-            money.format(narrowValue ?? value),
-            stat: stat,
-            hero: true,
-            key: const Key('cfStatTotal'),
-            style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          // Savings: what they are made of, then how they moved.
-          if (stat == _Stat.savings)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 10,
-                children: [
-                  _InOutAmount(icon: Icons.add_circle, color: Colors.green.shade500, text: money.format(shown.income)),
-                  _InOutAmount(icon: Icons.remove_circle, color: scheme.error, text: money.format(shown.expenses)),
-                  if (partPeriod != null) Text('· ${partPeriod.label(s, widget.language, today)}', style: muted),
-                ],
-              ),
-            ),
-          // A part picked, a filter, or Expenses as bars: the average part and
-          // where the figure stands; else the change.
-          if (stat != _Stat.savings && (average != null || partPeriod != null || filter != null))
-            Wrap(
-              key: const Key('cfStatAverage'),
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 6,
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          children: [
+            Row(
               children: [
-                Icon(Icons.bar_chart, size: 18, color: scheme.primary),
-                if (average != null)
-                  PrivacySentence(
-                    averageOf(privacySlot(0)),
-                    figures: [money.format(average)],
-                    style: theme.textTheme.bodyLarge?.copyWith(color: scheme.primary),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: title,
+                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        TextSpan(
+                          text: ' · ${filter?.label ?? stats.label}',
+                          style: theme.textTheme.titleLarge?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    key: const Key('cfStatTitle'),
                   ),
-                Text('· ${(partPeriod ?? period).label(s, widget.language, today)}', style: muted),
-              ],
-            )
-          else if (change != null && partPeriod == null)
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              children: [
-                _moneyChange(change.current, change.base, upIsGood: upIsGood, money: money, large: true),
-                if (stats.vsLabel case final vs?) Text(s.cfVs(vs), style: muted),
+                ),
+                IconButton(
+                  tooltip: s.cfPreviousPeriodTooltip,
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: period.canStep(-1, first, today) ? () => _showPeriod(ref, period.shifted(-1)) : null,
+                ),
+                IconButton(
+                  tooltip: s.cfNextPeriodTooltip,
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: period.canStep(1, first, today) ? () => _showPeriod(ref, period.shifted(1)) : null,
+                ),
               ],
             ),
-          const SizedBox(height: 20),
-          // A swipe on the bars or the ring goes to the period before or after.
-          GestureDetector(
-            key: const Key('cfStatChart'),
-            onHorizontalDragEnd: _mode == _ChartMode.running && stat != _Stat.savings
-                ? null
-                : (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v.abs() >= 200) step(v < 0 ? 1 : -1);
-                  },
-            child: SizedBox(height: 240, child: chart()),
-          ),
-          const SizedBox(height: 20),
-          _SpanSelector(period: period, available: available),
-          if (stats.notes.isNotEmpty && partPeriod == null && filter == null && average == null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(stats.notes.join('\n'), style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            _statAmount(
+              money.format(narrowValue ?? value),
+              stat: stat,
+              hero: true,
+              key: const Key('cfStatTotal'),
+              style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
             ),
-          const SizedBox(height: 24),
-          if (spending != null)
-            switch (stat) {
-              _Stat.expenses when filter != null => _FilteredRows(
-                filter: filter,
-                entries: [
-                  for (final e in spending.entriesBetween(part?.start ?? stats.start, part == null ? stats.until : upTo(part.end)))
-                    if (keeps(e)) e,
-                ],
-                locale: widget.locale,
-                language: widget.language,
-                onClear: () => setState(() => _filter = null),
+            const SizedBox(height: 4),
+            // Savings: what they are made of, then how they moved.
+            if (stat == _Stat.savings)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  children: [
+                    _InOutAmount(icon: Icons.add_circle, color: Colors.green.shade500, text: money.format(shown.income)),
+                    _InOutAmount(icon: Icons.remove_circle, color: scheme.error, text: money.format(shown.expenses)),
+                    if (partPeriod != null) Text('· ${partPeriod.label(s, widget.language, today)}', style: muted),
+                  ],
+                ),
               ),
-              _Stat.expenses => _SpentList(
-                spending: spending,
-                stats: shown,
-                locale: widget.locale,
-                language: widget.language,
-                by: _spentBy,
-                onBy: (by) => setState(() => _spentBy = by),
-                onFilter: (f) => setState(() => _filter = f),
-              ),
-              _Stat.income => _IncomeList(stats: shown, locale: widget.locale, language: widget.language),
-              _Stat.savings => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // A part picked, a filter, or Expenses as bars: the average part and
+            // where the figure stands; else the change.
+            if (stat != _Stat.savings && (average != null || partPeriod != null || filter != null))
+              Wrap(
+                key: const Key('cfStatAverage'),
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
                 children: [
-                  _SectionTitle(title: s.legendIncome, amount: '+${money.format(shown.income)}'),
-                  _IncomeList(stats: shown, locale: widget.locale, language: widget.language, titled: false),
-                  const SizedBox(height: 24),
-                  _SectionTitle(title: s.legendExpenses, amount: '−${money.format(shown.expenses)}'),
-                  _SpentList(spending: spending, stats: shown, locale: widget.locale, language: widget.language, titled: false),
+                  Icon(Icons.bar_chart, size: 18, color: scheme.primary),
+                  if (average != null)
+                    PrivacySentence(
+                      averageOf(privacySlot(0)),
+                      figures: [money.format(average)],
+                      style: theme.textTheme.bodyLarge?.copyWith(color: scheme.primary),
+                    ),
+                  Text('· ${(partPeriod ?? period).label(s, widget.language, today)}', style: muted),
                 ],
               ),
-            },
-        ],
+            if (narrowVs != null && partPeriod == null)
+              Padding(
+                key: const Key('cfFilterVs'),
+                padding: const EdgeInsets.only(top: 4),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  children: [
+                    _moneyChange(narrowVs.now, narrowVs.before, upIsGood: false, money: money),
+                    if (stats.vsLabel case final vs?) Text(s.cfVs(vs), style: muted),
+                    PrivacyText(
+                      '(${money.format(narrowVs.before)} → ${money.format(narrowVs.whole)})',
+                      key: const Key('cfFilterVsWhole'),
+                      style: muted,
+                    ),
+                  ],
+                ),
+              ),
+            if (stat != _Stat.savings && (average != null || partPeriod != null || filter != null))
+              const SizedBox.shrink()
+            else if (change != null && partPeriod == null)
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  _moneyChange(change.current, change.base, upIsGood: upIsGood, money: money, large: true),
+                  if (stats.vsLabel case final vs?) Text(s.cfVs(vs), style: muted),
+                ],
+              ),
+            const SizedBox(height: 20),
+            // A swipe on the bars or the ring goes to the period before or after.
+            GestureDetector(
+              key: const Key('cfStatChart'),
+              onHorizontalDragEnd: _mode == _ChartMode.running && stat != _Stat.savings
+                  ? null
+                  : (d) {
+                      final v = d.primaryVelocity ?? 0;
+                      if (v.abs() >= 200) step(v < 0 ? 1 : -1);
+                    },
+              child: SizedBox(height: 240, child: chart()),
+            ),
+            const SizedBox(height: 20),
+            _SpanSelector(period: period, available: available),
+            if (stats.notes.isNotEmpty && partPeriod == null && filter == null && average == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(stats.notes.join('\n'), style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+              ),
+            const SizedBox(height: 24),
+            if (spending != null)
+              switch (stat) {
+                _Stat.expenses when filter != null => _FilteredRows(
+                  filter: filter,
+                  entries: [
+                    for (final e in spending.entriesBetween(part?.start ?? stats.start, part == null ? stats.until : upTo(part.end)))
+                      if (keeps(e)) e,
+                  ],
+                  locale: widget.locale,
+                  language: widget.language,
+                  onClear: () => setState(() => _steps = const []),
+                  title: Wrap(
+                    key: const Key('cfFilterSteps'),
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final (i, st) in _steps.indexed)
+                        _StepChip(
+                          key: Key('cfFilterStep:$i'),
+                          step: st,
+                          onEdit: () => _editStep(i, spending, stats, accounts),
+                          onRemove: () => _removeStep(i),
+                        ),
+                    ],
+                  ),
+                  breakdown: breakdown
+                      ? _SpentList(
+                          spending: narrowedData!,
+                          narrowed: true,
+                          stats: shown,
+                          locale: widget.locale,
+                          language: widget.language,
+                          by: _narrowBy,
+                          onBy: (by) => setState(() => _narrowBy = by),
+                          onFilter: _addFilter,
+                        )
+                      : null,
+                ),
+                _Stat.expenses => _SpentList(
+                  spending: spending,
+                  stats: shown,
+                  locale: widget.locale,
+                  language: widget.language,
+                  by: _spentBy,
+                  onBy: (by) => setState(() => _spentBy = by),
+                  onFilter: _addFilter,
+                ),
+                _Stat.income => _IncomeList(stats: shown, locale: widget.locale, language: widget.language),
+                _Stat.savings => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionTitle(title: s.legendIncome, amount: '+${money.format(shown.income)}'),
+                    _IncomeList(stats: shown, locale: widget.locale, language: widget.language, titled: false),
+                    const SizedBox(height: 24),
+                    _SectionTitle(title: s.legendExpenses, amount: '−${money.format(shown.expenses)}'),
+                    _SpentList(spending: spending, stats: shown, locale: widget.locale, language: widget.language, titled: false),
+                  ],
+                ),
+              },
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// A step of the Expenses drill-down: its kind's icon and its values; a tap
+/// picks its values, ✕ removes it.
+class _StepChip extends ConsumerWidget {
+  final _FilterStep step;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+  const _StepChip({super.key, required this.step, required this.onEdit, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    return InputChip(
+      avatar: Icon(switch (step.kind) {
+        _FilterKind.category => Icons.category_outlined,
+        _FilterKind.merchant => Icons.storefront_outlined,
+        _FilterKind.account => Icons.account_balance_outlined,
+        _FilterKind.currency => Icons.currency_exchange,
+      }, size: 18),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(step.keys.values.join(', '), overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 4),
+          const Icon(Icons.add, size: 16),
+        ],
+      ),
+      tooltip: s.cfFilterEdit,
+      onPressed: onEdit,
+      deleteIcon: const Icon(Icons.close, size: 18),
+      onDeleted: onRemove,
+    );
+  }
+}
+
+/// The values a step can keep, the biggest first, each with what it spent in
+/// the period and in the days compared with ([before], null without a
+/// comparison); the ones [picked] ticked. Returns the values ticked.
+class _StepValuesDialog extends ConsumerStatefulWidget {
+  final List<Object?> keys;
+  final Map<Object?, String> names;
+  final Map<Object?, double> now;
+  final Map<Object?, double>? before;
+  final String? vsLabel;
+  final Map<Object?, String> picked;
+  final String locale;
+  const _StepValuesDialog({
+    required this.keys,
+    required this.names,
+    required this.now,
+    required this.before,
+    required this.vsLabel,
+    required this.picked,
+    required this.locale,
+  });
+
+  @override
+  ConsumerState<_StepValuesDialog> createState() => _StepValuesDialogState();
+}
+
+class _StepValuesDialogState extends ConsumerState<_StepValuesDialog> {
+  late final Map<Object?, String> _picked = {...widget.picked};
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final money = fmt.currencyFormat(widget.locale, _cashFlowSymbol(ref));
+    return AlertDialog(
+      title: Text(s.cfFilterEdit),
+      content: SizedBox(
+        width: 420,
+        height: 480,
+        child: ListView(
+          children: [
+            for (final k in widget.keys)
+              CheckboxListTile(
+                key: Key('cfStepValue:$k'),
+                value: _picked.containsKey(k),
+                title: Text(widget.names[k]!),
+                subtitle: Wrap(
+                  children: [
+                    PrivacyText(money.format(widget.now[k] ?? 0), style: muted),
+                    if (widget.before case final before?)
+                      PrivacySentence(' · ${widget.vsLabel ?? ''}: ${privacySlot(0)}', figures: [money.format(before[k] ?? 0)], style: muted),
+                  ],
+                ),
+                onChanged: (v) => setState(() => v == true ? _picked[k] = widget.names[k]! : _picked.remove(k)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('cfStepValuesDone'),
+          onPressed: () => Navigator.pop(context, _picked),
+          child: Text(MaterialLocalizations.of(context).okButtonLabel),
+        ),
+      ],
+    );
+  }
+}
+
+/// A row's change against the days compared with, in percent: red up, green
+/// down (spending), "new" when those days had none of it.
+class _RowChange extends ConsumerWidget {
+  final double now;
+  final double before;
+  final String locale;
+  const _RowChange({required this.now, required this.before, required this.locale});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final percent = NumberFormat.decimalPercentPattern(locale: locale, decimalDigits: 0);
+    final d = now - before;
+    final same = d.abs() < 0.005;
+    final text = same
+        ? '='
+        : before.abs() < 0.005
+        ? '▲ ${s.cfChangeNew}'
+        : '${d > 0 ? '▲' : '▼'} ${percent.format((d / before).abs())}';
+    return _ChangeText(text: text, good: same ? null : d < 0);
   }
 }
 
@@ -1036,7 +1339,21 @@ class _RowsCard extends ConsumerStatefulWidget {
   final ({Key key, String title, double amount})? total;
   final String locale;
   final String symbol;
-  const _RowsCard({super.key, required this.rows, required this.locale, required this.symbol, this.footer = const [], this.total});
+  const _RowsCard({
+    super.key,
+    required this.rows,
+    required this.locale,
+    required this.symbol,
+    this.footer = const [],
+    this.total,
+    this.before = const {},
+    this.beforeLabel,
+  });
+
+  /// Each row's figure in the days the period is compared with, by row key:
+  /// the row tells it, named [beforeLabel], and its change against it.
+  final Map<Key, double> before;
+  final String? beforeLabel;
 
   @override
   ConsumerState<_RowsCard> createState() => _RowsCardState();
@@ -1055,6 +1372,7 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
     final share = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 0);
     String shareOf(double v) => v > 0 && v < 0.005 ? '<1%' : share.format(v);
     final rows = _all ? widget.rows : widget.rows.take(_shown).toList();
+    final muted = theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant);
     if (widget.rows.isEmpty && widget.footer.isEmpty && widget.total == null) return const SizedBox.shrink();
     final bold = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
     Widget tile(_ListRow r) => ListTile(
@@ -1063,13 +1381,25 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
       leading: r.avatar,
       title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
-      subtitle: r.subtitle.isEmpty
+      subtitle: r.subtitle.isEmpty && widget.before[r.key] == null
           ? null
-          : Text(
-              r.subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          : Row(
+              children: [
+                Flexible(
+                  child: Text(r.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                ),
+                // What the row was in the days compared with: position size.
+                if (widget.before[r.key] case final b?)
+                  Flexible(
+                    child: PrivacySentence(
+                      ' · ${widget.beforeLabel ?? ''}: ${privacySlot(0)}',
+                      figures: [money.format(b)],
+                      style: muted,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
             ),
       trailing: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1077,7 +1407,16 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           PrivacyText(money.format(r.amount), style: theme.textTheme.titleMedium),
-          if (r.share case final share?) Text(shareOf(share), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.before[r.key] case final b?) ...[
+                _RowChange(now: r.amount, before: b, locale: widget.locale),
+                if (r.share != null) const SizedBox(width: 8),
+              ],
+              if (r.share case final share?) Text(shareOf(share), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+            ],
+          ),
         ],
       ),
       onTap: r.onTap,
@@ -1138,6 +1477,10 @@ class _SpentList extends ConsumerStatefulWidget {
   /// Narrows the screen to a row's category, merchant, account or currency;
   /// without it a row opens its transactions.
   final ValueChanged<_SpendFilter>? onFilter;
+
+  /// [spending] holds only the rows the screen is narrowed to: the list sums
+  /// them, and how the categories add up to the Expenses is not its to tell.
+  final bool narrowed;
   const _SpentList({
     required this.spending,
     required this.stats,
@@ -1147,6 +1490,7 @@ class _SpentList extends ConsumerStatefulWidget {
     this.by = _SpentBy.category,
     this.onBy,
     this.onFilter,
+    this.narrowed = false,
   });
 
   @override
@@ -1166,10 +1510,10 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
     final scheme = theme.colorScheme;
     final byId = ref.watch(categoriesByIdProvider);
     final st = widget.stats;
-    final p = st.spending;
-    // Shares of what the ledger holds: the rows add up to it.
-    final total = st.spent;
     final (from, to) = (st.start, st.until);
+    final p = widget.narrowed ? widget.spending.sumOfDays(from, to) : st.spending;
+    // Shares of what the ledger holds: the rows add up to it.
+    final total = widget.narrowed ? widget.spending.spentBetween(from, to) : st.spent;
     Category? category(int? id) => id == null ? null : byId[id];
     void open(String title, List<int> Function(SpendingByCategoryData) idsOf) =>
         openRows(context, idsOf, title: '$title · ${st.label}', locale: widget.locale);
@@ -1183,9 +1527,9 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
     // steps have no account: by account, each plan is its own row, as by
     // category; by currency, they count in the plan's.
     final entries = widget.spending.entriesBetween(from, to).toList();
-    Map<K, ({double amount, int count})> sumsBy<K>(K Function(SpendingEntry) keyOf, {bool plans = true}) {
+    Map<K, ({double amount, int count})> sumsBy<K>(K Function(SpendingEntry) keyOf, {bool plans = true, Iterable<SpendingEntry>? from}) {
       final out = <K, ({double amount, int count})>{};
-      for (final e in entries) {
+      for (final e in from ?? entries) {
         if (!plans && e.plan != null) continue;
         final k = keyOf(e);
         final was = out[k] ?? (amount: 0.0, count: 0);
@@ -1195,6 +1539,24 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
     }
 
     final accounts = {for (final a in ref.watch(accountsProvider).value ?? const <Account>[]) a.id: a.name};
+    // Each row against the same days of the period compared with, as the
+    // Expenses are; a row only that period had is listed too, so a merchant
+    // paid then and not now can be picked.
+    final compared = st.comparedDays.isEmpty ? null : st.comparedDays;
+    final other = compared == null ? null : widget.spending.sumOfRanges(compared);
+    final otherEntries = compared == null ? const <SpendingEntry>[] : widget.spending.entriesIn(compared).toList();
+    final before = <Key, double>{
+      if (other != null) ...{
+        for (final id in {...p.byCategory.keys, ...other.byCategory.keys}) Key('cfSpendingCategory:$id'): other.amount(id),
+        for (final k in {...p.merchants.keys, ...other.merchants.keys}) Key('cfSpendingMerchant:$k'): other.merchants[k]?.amount ?? 0.0,
+        for (final e in entries)
+          if (e.plan == null && e.accountId != null) Key('cfSpendingAccount:${e.accountId}'): 0.0,
+        for (final MapEntry(key: id, value: v) in sumsBy((e) => e.accountId, plans: false, from: otherEntries).entries)
+          Key('cfSpendingAccount:$id'): v.amount,
+        for (final e in entries) Key('cfSpendingCurrency:${e.currency}'): 0.0,
+        for (final MapEntry(key: c, value: v) in sumsBy((e) => e.currency, from: otherEntries).entries) Key('cfSpendingCurrency:$c'): v.amount,
+      },
+    };
     final planRows = <_ListRow>[
       for (final plan in p.savingPlans)
         (
@@ -1208,79 +1570,93 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
         ),
     ];
 
-    final rows = <_ListRow>[
-      if (_by == _SpentBy.category) ...[
-        for (final MapEntry(key: id, value: amount) in p.byCategory.entries)
-          (
-            key: Key('cfSpendingCategory:$id'),
-            avatar: CategoryAvatar(category: category(id)),
-            title: categoryLabelFor(id, byId, s),
-            subtitle: s.cfTransactions(p.ids(id).length),
-            amount: amount,
-            share: total <= 0 ? 0.0 : amount / total,
-            onTap: tapOf(
-              (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)),
-              (live) => live.sumOfDays(from, to).ids(id),
-            ),
-          ),
-        ...planRows,
-      ] else if (_by == _SpentBy.merchant)
-        for (final m in p.topMerchants(p.merchants.length))
-          (
-            key: Key('cfSpendingMerchant:${m.key}'),
-            avatar: m.mainCategory == null
-                ? RowIconBadge(icon: Icons.storefront_outlined, color: scheme.outline, tint: 0.15)
-                : CategoryAvatar(category: category(m.mainCategory)),
-            title: m.name,
-            subtitle: s.cfTransactions(m.ids.length),
-            amount: m.amount,
-            share: total <= 0 ? 0.0 : m.amount / total,
-            onTap: tapOf((
-              kind: _FilterKind.merchant,
-              key: m.key,
-              label: m.name,
-            ), (live) => live.sumOfDays(from, to).merchants[m.key]?.ids ?? const []),
-          )
-      else if (_by == _SpentBy.account) ...[
-        for (final MapEntry(key: id, value: sum) in sumsBy((e) => e.accountId!, plans: false).entries)
-          (
-            key: Key('cfSpendingAccount:$id'),
-            avatar: RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
-            title: accounts[id] ?? '#$id',
-            subtitle: s.cfTransactions(sum.count),
-            amount: sum.amount,
-            share: total <= 0 ? 0.0 : sum.amount / total,
-            onTap: tapOf(
-              (kind: _FilterKind.account, key: id, label: accounts[id] ?? '#$id'),
-              (live) => [
-                for (final e in live.entriesBetween(from, to))
-                  if (e.accountId == id) ?e.id,
-              ],
-            ),
-          ),
-        ...planRows,
-      ] else
-        for (final MapEntry(key: code, value: sum) in sumsBy((e) => e.currency).entries)
-          (
-            key: Key('cfSpendingCurrency:$code'),
-            avatar: RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
-            title: code,
-            subtitle: s.cfTransactions(sum.count),
-            amount: sum.amount,
-            share: total <= 0 ? 0.0 : sum.amount / total,
-            onTap: tapOf(
-              (kind: _FilterKind.currency, key: code, label: code),
-              (live) => [
-                for (final e in live.entriesBetween(from, to))
-                  if (e.currency == code) ?e.id,
-              ],
-            ),
-          ),
-    ]..sort((a, b) => b.amount.compareTo(a.amount));
+    // The rows only the days compared with had, at nothing now.
+    const none = (amount: 0.0, count: 0);
+    final merchants = {...?other?.merchants, ...p.merchants};
+    final byAccount = {
+      for (final e in otherEntries)
+        if (e.plan == null && e.accountId != null) e.accountId!: none,
+      ...sumsBy((e) => e.accountId!, plans: false),
+    };
+    final byCurrency = {for (final e in otherEntries) e.currency: none, ...sumsBy((e) => e.currency)};
+    final rows =
+        <_ListRow>[
+          if (_by == _SpentBy.category) ...[
+            for (final id in {...p.byCategory.keys, ...?other?.byCategory.keys})
+              (
+                key: Key('cfSpendingCategory:$id'),
+                avatar: CategoryAvatar(category: category(id)),
+                title: categoryLabelFor(id, byId, s),
+                subtitle: s.cfTransactions(p.ids(id).length),
+                amount: p.amount(id),
+                share: total <= 0 ? 0.0 : p.amount(id) / total,
+                onTap: tapOf(
+                  (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)),
+                  (live) => live.sumOfDays(from, to).ids(id),
+                ),
+              ),
+            ...planRows,
+          ] else if (_by == _SpentBy.merchant)
+            for (final MapEntry(key: k, value: m) in merchants.entries)
+              (
+                key: Key('cfSpendingMerchant:$k'),
+                avatar: m.mainCategory == null
+                    ? RowIconBadge(icon: Icons.storefront_outlined, color: scheme.outline, tint: 0.15)
+                    : CategoryAvatar(category: category(m.mainCategory)),
+                title: m.name,
+                subtitle: s.cfTransactions(p.merchants[k]?.ids.length ?? 0),
+                amount: p.merchants[k]?.amount ?? 0.0,
+                share: total <= 0 ? 0.0 : (p.merchants[k]?.amount ?? 0.0) / total,
+                onTap: tapOf((
+                  kind: _FilterKind.merchant,
+                  key: k,
+                  label: m.name,
+                ), (live) => live.sumOfDays(from, to).merchants[k]?.ids ?? const []),
+              )
+          else if (_by == _SpentBy.account) ...[
+            for (final MapEntry(key: id, value: sum) in byAccount.entries)
+              (
+                key: Key('cfSpendingAccount:$id'),
+                avatar: RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
+                title: accounts[id] ?? '#$id',
+                subtitle: s.cfTransactions(sum.count),
+                amount: sum.amount,
+                share: total <= 0 ? 0.0 : sum.amount / total,
+                onTap: tapOf(
+                  (kind: _FilterKind.account, key: id, label: accounts[id] ?? '#$id'),
+                  (live) => [
+                    for (final e in live.entriesBetween(from, to))
+                      if (e.accountId == id) ?e.id,
+                  ],
+                ),
+              ),
+            ...planRows,
+          ] else
+            for (final MapEntry(key: code, value: sum) in byCurrency.entries)
+              (
+                key: Key('cfSpendingCurrency:$code'),
+                avatar: RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
+                title: code,
+                subtitle: s.cfTransactions(sum.count),
+                amount: sum.amount,
+                share: total <= 0 ? 0.0 : sum.amount / total,
+                onTap: tapOf(
+                  (kind: _FilterKind.currency, key: code, label: code),
+                  (live) => [
+                    for (final e in live.entriesBetween(from, to))
+                      if (e.currency == code) ?e.id,
+                  ],
+                ),
+              ),
+          // The biggest first; those the period did not have, by what they were.
+        ]..sort((a, b) {
+          final c = b.amount.compareTo(a.amount);
+          return c != 0 ? c : (before[b.key] ?? 0).compareTo(before[a.key] ?? 0);
+        });
     // By category, the list adds up to the Expenses: the ledger's spending,
     // less the refunds received, and what no transaction shows.
     final footer = <_ListRow>[];
-    if (_by == _SpentBy.category) {
+    if (_by == _SpentBy.category && !widget.narrowed) {
       if (st.refunds >= 0.5) {
         footer.add((
           key: const Key('cfExpensesRefunds'),
@@ -1356,18 +1732,23 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
           ],
         ),
         const SizedBox(height: 4),
-        if (rows.isEmpty && footer.isEmpty && st.expenses.abs() < 0.5)
+        // Rows at nothing are only the days compared with: nothing spent now.
+        if (rows.every((r) => r.amount.abs() < 0.005) && footer.isEmpty && st.expenses.abs() < 0.5)
           EmptyState(key: const Key('cfSpendingEmpty'), icon: Icons.receipt_long_outlined, message: s.spendingByCategoryEmpty)
         else
           _RowsCard(
             rows: rows,
             footer: footer,
-            total: _by != _SpentBy.category ? null : (key: const Key('cfExpensesTotalRow'), title: s.legendExpenses, amount: st.expenses),
+            total: _by != _SpentBy.category || widget.narrowed
+                ? null
+                : (key: const Key('cfExpensesTotalRow'), title: s.legendExpenses, amount: st.expenses),
             locale: widget.locale,
             symbol: currencySymbol(widget.spending.baseCurrency),
+            before: before,
+            beforeLabel: st.vsLabel,
           ),
         // How the categories add up to the Expenses: under the categories only.
-        if (_by == _SpentBy.category) ...[
+        if (_by == _SpentBy.category && !widget.narrowed) ...[
           const SizedBox(height: 10),
           Footnote(s.cfExpensesNote(s.legendExpenses, s.cfYearByYear, s.spendingByCategoryTitle), key: const Key('cfSpendingNote')),
         ],
@@ -1386,7 +1767,22 @@ class _FilteredRows extends ConsumerWidget {
   final String locale;
   final String language;
   final VoidCallback onClear;
-  const _FilteredRows({required this.filter, required this.entries, required this.locale, required this.language, required this.onClear});
+
+  /// What names the filter on its card (its steps); else its label.
+  final Widget? title;
+
+  /// Under the card, above the days: what the rows are made of, a row
+  /// narrowing further.
+  final Widget? breakdown;
+  const _FilteredRows({
+    required this.filter,
+    required this.entries,
+    required this.locale,
+    required this.language,
+    required this.onClear,
+    this.title,
+    this.breakdown,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1450,11 +1846,12 @@ class _FilteredRows extends ConsumerWidget {
             key: const Key('cfFilter'),
             contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
             leading: avatar,
-            title: Text(filter.label, style: theme.textTheme.titleMedium),
+            title: title ?? Text(filter.label, style: theme.textTheme.titleMedium),
             subtitle: Text(s.cfTransactions(entries.length), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
             trailing: FilledButton.tonal(key: const Key('cfFilterClear'), onPressed: onClear, child: Text(s.cfClearFilter)),
           ),
         ),
+        if (breakdown case final b?) ...[const SizedBox(height: 24), b],
         for (final MapEntry(key: d, value: rows) in days.entries) ...[
           const SizedBox(height: 24),
           _SectionTitle(title: date.format(d), amount: money.format(-rows.fold(0.0, (a, e) => a + e.amount))),

@@ -1873,6 +1873,10 @@ class AppStrings {
   String get cfByAccount => _it ? 'Per conto' : 'By account';
   String get cfByCurrency => _it ? 'Per valuta' : 'By currency';
   String get cfClearFilter => _it ? 'Cancella' : 'Clear';
+  // The Expenses drill-down: a filter's values, added or removed.
+  String get cfFilterEdit => _it ? 'Aggiungi o togli' : 'Add or remove';
+  // A row with nothing in the period it is compared with.
+  String get cfChangeNew => _it ? 'nuovo' : 'new';
   String get cfManage => _it ? 'Gestisci' : 'Manage';
   // Cash Flow overview: the period's spending, income and net, one card each.
   String get cfInPositive => _it ? 'In positivo' : 'In the black';

@@ -163,6 +163,18 @@ void main() {
       expect(p.amount(2), 200, reason: 'they still count in their category');
     });
 
+    test('runs of days summed together: the days a period is compared against', () {
+      final runs = [(start: DateTime(2026, 2, 3), end: DateTime(2026, 2, 3)), (start: DateTime(2026, 3, 1), end: DateTime(2026, 3, 1))];
+      expect([for (final e in d.entriesIn(runs)) e.id], [1, 2, 4]);
+      final p = d.sumOfRanges(runs);
+      expect(p.amount(1), 70, reason: 'Conad on 3 February and on 1 March');
+      expect(p.amount(4), 10);
+      expect(p.amount(2), 0, reason: '2 March is in no run');
+      expect(p.merchants['CONAD']!.ids, [1, 4]);
+      expect(p.merchants['AMAZON']!.amount, 10);
+      expect(d.sumOfRanges(const []).total, 0);
+    });
+
     test('a running total, one figure a day, across months', () {
       final run = d.runningBetween(DateTime(2026, 2, 1), DateTime(2026, 3, 31));
       expect(run.length, 28 + 31);
