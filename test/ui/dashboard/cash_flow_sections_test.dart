@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show ChartCard;
+import 'package:finance_copilot/utils/chart_math.dart' as chart_math;
 
 import 'dashboard_harness.dart';
 
@@ -121,6 +122,57 @@ void main() {
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await h.settle(tester);
         expect(movingAverage(), isNot(equals(before)), reason: 'a 7-day window, not the default one');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('the period sets only their visible range, never their data; a zoom holds until the period changes', (tester) async {
+      await h.seed();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await h.cashFlowSection(tester, 'cfTrendsTile');
+        List<ChartCard> cards() => tester.widgetList<ChartCard>(find.byType(ChartCard)).toList();
+        final first = cards().first.allData.firstDate;
+        double x(DateTime day) => chart_math.calendarDaysBetween(first, day).toDouble();
+        List<(double?, double?)> ranges() => [for (final c in cards()) (c.zoomMinX, c.zoomMaxX)];
+        Map<String, List<FlSpot>> data() => {
+          for (final c in cards())
+            for (final series in c.series) series.key: series.spots,
+        };
+
+        // This month, to the 10th of March: the twelve months up to today, the
+        // span the averages run over, on all three charts.
+        final thisMonth = (x(DateTime(2025, 3, 10)), x(DateTime(2026, 3, 10)));
+        expect(ranges(), [thisMonth, thisMonth, thisMonth]);
+        final whole = data();
+        // Every series spans the whole history, to today; a velocity from its
+        // second day (a change needs the day before).
+        final today = x(DateTime(2026, 3, 10));
+        expect(whole.values.every((spots) => spots.first.x <= 1 && spots.last.x == today), isTrue, reason: whole.keys.join(', '));
+
+        // 2025: its days, from the last day of 2024 (a year before its end).
+        await h.pickYear(tester, 2025);
+        final y2025 = (x(DateTime(2024, 12, 31)), x(DateTime(2025, 12, 31)));
+        expect(ranges(), [y2025, y2025, y2025]);
+        expect(data(), whole, reason: 'the period moves the view, never the data or its moving averages');
+
+        // A zoom on one chart is that chart's own; it holds as the tab redraws.
+        cards().first.onZoom(100, 200, null, null);
+        await h.settle(tester);
+        expect(ranges(), [(100.0, 200.0), y2025, y2025]);
+        final velocity = cards().last;
+        velocity.onToggle(velocity.series.first.key);
+        await h.settle(tester);
+        expect(cards().last.hidden, contains(velocity.series.first.key), reason: 'the tab redrew');
+        expect(ranges(), [(100.0, 200.0), y2025, y2025]);
+
+        // Another period sets every chart's range again.
+        await tester.tap(find.byKey(const Key('cfSpan:month')));
+        await h.settle(tester);
+        expect(ranges(), [thisMonth, thisMonth, thisMonth]);
+        expect(data(), whole);
       } finally {
         await h.unmount(tester);
       }
