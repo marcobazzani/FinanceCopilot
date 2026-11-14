@@ -1048,14 +1048,22 @@ void main() {
           );
       try {
         await openExpenses(tester);
-        expect(inKey('cfSpendingCategory:$groceries', '▲ 24%'), findsOneWidget, reason: '560 against 400 at Conad and 50 at Esselunga');
-        expect(inKey('cfSpendingCategory:$fuel', '▲ ${s.cfChangeNew}'), findsOneWidget, reason: 'no fuel in those days of 2025');
+        expect(
+          inKey('cfSpendingCategory:$groceries', '▲ ${money.format(110)} (24%)'),
+          findsOneWidget,
+          reason: '560 against 400 at Conad and 50 at Esselunga',
+        );
+        expect(
+          inKey('cfSpendingCategory:$fuel', '▲ ${money.format(100)} (${s.cfChangeNew})'),
+          findsOneWidget,
+          reason: 'no fuel in those days of 2025',
+        );
         expect(inKey('cfSpendingCategory:$groceries', s.cfTransactions(3)), findsOneWidget, reason: 'the count stays its own line');
 
         // Groceries: its merchants, Esselunga at nothing now and down all the way.
         await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
-        expect(inKey('cfSpendingMerchant:CONAD', '▲ 40%'), findsOneWidget);
-        expect(inKey('cfSpendingMerchant:ESSELUNGA', '▼ 100%'), findsOneWidget);
+        expect(inKey('cfSpendingMerchant:CONAD', '▲ ${money.format(160)} (40%)'), findsOneWidget);
+        expect(inKey('cfSpendingMerchant:ESSELUNGA', '▼ ${money.format(50)} (100%)'), findsOneWidget);
         expect(inKey('cfSpendingMerchant:ESSELUNGA', s.cfTransactions(0)), findsOneWidget);
         final merchants = [
           for (final k in ['CONAD', 'ESSELUNGA']) tester.getTopLeft(find.byKey(Key('cfSpendingMerchant:$k'))).dy,
@@ -1067,7 +1075,7 @@ void main() {
         await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
         await tester.tap(find.text(s.cfByMerchant).last);
         await h.settle(tester);
-        expect(inKey('cfSpendingMerchant:MYSTERY', '▲ ${s.cfChangeNew}'), findsOneWidget);
+        expect(inKey('cfSpendingMerchant:MYSTERY', '▲ ${money.format(30)} (${s.cfChangeNew})'), findsOneWidget);
         expect(
           find.descendant(of: find.byKey(const Key('cfSpendingMerchant:MYSTERY')), matching: find.byIcon(Icons.storefront_outlined)),
           findsOneWidget,
@@ -1212,7 +1220,7 @@ void main() {
         await h.openTab(tester, 'Cash Flow');
         await span(tester, 'year');
         await tap(tester, find.byKey(const Key('cfSavingsCard')));
-        expect(inKey('cfSpendingCategory:$groceries', '▲ 24%'), findsOneWidget);
+        expect(inKey('cfSpendingCategory:$groceries', '▲ ${money.format(110)} (24%)'), findsOneWidget);
         await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
         expect(find.text('CONAD 2026-01-10'), findsOneWidget);
         expect(find.byKey(const Key('cfFilterSteps')), findsNothing, reason: 'Savings opens the rows, it is not narrowed');
@@ -1221,18 +1229,104 @@ void main() {
       }
     });
 
-    testWidgets('privacy mode: what a row was then is masked; its change, in percent, is not', (tester) async {
+    testWidgets('privacy mode: what a row was then and how much it changed are masked; its change in percent is not', (tester) async {
       await seedWithEsselunga();
       try {
         await openExpenses(tester, isPrivate: true);
         expect(masked(inKey('cfSpendingCategory:$groceries', money.format(450))), isTrue);
-        expect(masked(inKey('cfSpendingCategory:$groceries', '▲ 24%')), isFalse);
+        expect(masked(inKey('cfSpendingCategory:$groceries', money.format(110))), isTrue, reason: 'a change in money is position size');
+        expect(masked(inKey('cfSpendingCategory:$groceries', '▲ \uFFFC (24%)')), isFalse, reason: 'its arrow and percent are shape');
         await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
         await tap(tester, find.byKey(const Key('cfFilterStep:0')), scroll: true);
         // The categories to pick among: Groceries at 560.
         final value = find.byKey(Key('cfStepValue:$groceries'));
         expect(masked(find.descendant(of: value, matching: find.text(money.format(560)))), isTrue);
         expect(masked(find.descendant(of: value, matching: find.text('Groceries'))), isFalse);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    /// The rows under [prefix] (`cfSpendingMerchant:` …), top to bottom.
+    List<String> order(WidgetTester tester, String prefix) {
+      final rows = [
+        for (final e
+            in find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith(prefix)).evaluate())
+          ((e.widget.key! as ValueKey<String>).value, tester.getTopLeft(find.byKey(e.widget.key!)).dy),
+      ]..sort((a, b) => a.$2.compareTo(b.$2));
+      return [for (final (key, _) in rows) key.substring(prefix.length)];
+    }
+
+    Future<void> sortBy(WidgetTester tester, String item) async {
+      await tap(tester, find.byKey(const Key('cfSpentSort')), scroll: true);
+      await tester.tap(find.byKey(Key('cfSpentSort:$item')));
+      await h.settle(tester);
+    }
+
+    testWidgets('the list orders by total, by change or by change in percent, highest or lowest first; narrowing keeps the order', (
+      tester,
+    ) async {
+      await seedWithEsselunga();
+      try {
+        await openExpenses(tester);
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByMerchant).last);
+        await h.settle(tester);
+        const merchant = 'cfSpendingMerchant:';
+        // Now against the same days of 2025: Conad 560 (+160, +40%), the fuel
+        // station 100 (new), Esselunga nothing (−50, −100%).
+        expect(order(tester, merchant), ['CONAD', 'DISTRIBUTOREIP', 'ESSELUNGA'], reason: 'by total, the biggest first');
+        await sortBy(tester, 'lowest');
+        expect(order(tester, merchant), ['ESSELUNGA', 'DISTRIBUTOREIP', 'CONAD'], reason: 'by total, the smallest first');
+        await sortBy(tester, 'change');
+        expect(order(tester, merchant), ['ESSELUNGA', 'DISTRIBUTOREIP', 'CONAD'], reason: 'the biggest drop first');
+        await sortBy(tester, 'highest');
+        expect(order(tester, merchant), ['CONAD', 'DISTRIBUTOREIP', 'ESSELUNGA'], reason: 'the biggest rise first');
+        await sortBy(tester, 'percent');
+        expect(order(tester, merchant), ['DISTRIBUTOREIP', 'CONAD', 'ESSELUNGA'], reason: 'new, +40%, −100%');
+        await sortBy(tester, 'lowest');
+        expect(order(tester, merchant), ['ESSELUNGA', 'CONAD', 'DISTRIBUTOREIP']);
+        // Narrowed to Groceries, its merchants keep the order picked.
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByCategory).last);
+        await h.settle(tester);
+        await tap(tester, find.byKey(Key('cfSpendingCategory:$groceries')), scroll: true);
+        expect(order(tester, merchant), ['ESSELUNGA', 'CONAD'], reason: 'still by change in percent, the lowest first');
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('without days to compare with, the list goes by total and offers no change to order by', (tester) async {
+      await seedWithEsselunga();
+      await h.pump(tester);
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await compareWith(tester, s.cfCompareNone);
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        expect(order(tester, 'cfSpendingCategory:'), ['$groceries', '$fuel'], reason: 'by total: 560, then 100');
+        await tap(tester, find.byKey(const Key('cfSpentSort')), scroll: true);
+        expect(tester.widget<CheckedPopupMenuItem<Object?>>(find.byKey(const Key('cfSpentSort:percent'))).enabled, isFalse);
+        expect(tester.widget<CheckedPopupMenuItem<Object?>>(find.byKey(const Key('cfSpentSort:total'))).enabled, isTrue);
+      } finally {
+        await h.unmount(tester);
+      }
+    });
+
+    testWidgets('on a phone the heading and the rows fit, a change with its amount and its percent', (tester) async {
+      await seedWithEsselunga();
+      await h.pump(tester, size: const Size(412, 915));
+      try {
+        await h.openTab(tester, 'Cash Flow');
+        await span(tester, 'year');
+        await tap(tester, find.byKey(const Key('cfExpensesCard')));
+        await tap(tester, find.byKey(const Key('cfSpentBy')), scroll: true);
+        await tester.tap(find.text(s.cfByMerchant).last);
+        await h.settle(tester);
+        expect(inKey('cfSpendingMerchant:CONAD', '▲ ${money.format(160)} (40%)'), findsOneWidget);
+        expect(find.byKey(const Key('cfSpentSort')), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: 'nothing overflows');
       } finally {
         await h.unmount(tester);
       }

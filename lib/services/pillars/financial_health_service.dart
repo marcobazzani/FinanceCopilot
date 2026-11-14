@@ -10,7 +10,6 @@ import 'package:finance_copilot/services/pillars/health_balance_sheet.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/utils/chart_math.dart' as chart_math;
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
-import 'package:finance_copilot/utils/privacy_slots.dart';
 
 // ── Rating system ──
 
@@ -55,13 +54,6 @@ class HealthKpi {
   /// When set, the info dialog renders this rich span instead of [formula].
   final TextSpan? formulaRich;
 
-  /// A line under the name saying more about the headline. Its words are
-  /// shape, not magnitude, so privacy mode leaves them readable; the amounts
-  /// it quotes — [subtitleFigures], at its [privacySlot] markers — are
-  /// position size, and blur.
-  final String? subtitle;
-  final List<String> subtitleFigures;
-
   /// Whether the figures in [formula] are position size, masked in privacy mode
   /// below the symbolic first line. False when they are only percentages.
   final bool formulaFiguresPrivate;
@@ -74,8 +66,6 @@ class HealthKpi {
     this.description = '',
     this.formula = '',
     this.formulaRich,
-    this.subtitle,
-    this.subtitleFigures = const [],
     this.formulaFiguresPrivate = true,
   });
 }
@@ -388,21 +378,13 @@ String fireDescription(Rating rating, AppStrings s) => switch (rating) {
 
 /// The FIRE number card: how much of the number the investable net worth
 /// covers as the headline (a percentage, readable in privacy mode), rated on
-/// it, and the number itself — the target — on the line under the name (an
-/// amount, masked). N/A without a FIRE number. [money] spells an amount with
-/// its currency.
-HealthKpi fireKpi({required FireResult fire, required AppStrings s, required String Function(double) money}) {
+/// it. The number itself is in the card's info dialog. N/A without a FIRE
+/// number.
+HealthKpi fireKpi({required FireResult fire, required AppStrings s}) {
   if (fire.insufficientData) {
     return HealthKpi(name: s.kpiFireNumber, description: s.kpiFireInsufficientData());
   }
-  return HealthKpi(
-    name: s.kpiFireNumber,
-    value: fire.progressPct,
-    rating: fire.rating,
-    description: fireDescription(fire.rating, s),
-    subtitle: s.kpiFireTarget(privacySlot(0)),
-    subtitleFigures: [money(fire.fiNumber)],
-  );
+  return HealthKpi(name: s.kpiFireNumber, value: fire.progressPct, rating: fire.rating, description: fireDescription(fire.rating, s));
 }
 
 /// The holding of a single stock or crypto that weighs most in the portfolio.

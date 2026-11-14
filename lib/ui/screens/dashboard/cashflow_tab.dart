@@ -450,7 +450,11 @@ class _ChangeText extends StatelessWidget {
 
   /// In a screen's heading rather than next to a card's figure.
   final bool large;
-  const _ChangeText({required this.text, required this.good, this.amount = false, this.large = false});
+
+  /// Amounts [text] quotes at its privacy-slot markers: they blur in privacy
+  /// mode, the words around them do not.
+  final List<String> figures;
+  const _ChangeText({required this.text, required this.good, this.amount = false, this.large = false, this.figures = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -461,6 +465,7 @@ class _ChangeText extends StatelessWidget {
       null => theme.colorScheme.onSurfaceVariant,
     };
     final style = (large ? theme.textTheme.titleMedium : theme.textTheme.titleSmall)?.copyWith(color: color, fontWeight: FontWeight.w600);
+    if (figures.isNotEmpty) return PrivacySentence(text, figures: figures, style: style);
     return amount ? PrivacyText(text, style: style) : Text(text, style: style);
   }
 }

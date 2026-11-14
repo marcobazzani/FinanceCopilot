@@ -9,7 +9,6 @@ import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/services/pillars/financial_health_service.dart';
 import 'package:finance_copilot/services/pillars/health_balance_sheet.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
-import 'package:finance_copilot/utils/privacy_slots.dart';
 
 void main() {
   setUpAll(() async => initializeDateFormatting());
@@ -339,24 +338,21 @@ void main() {
       expect(fireDescription(rateFire(10), AppStrings.it), 'Il tuo patrimonio investibile è ancora lontano dal numero FIRE.');
     });
 
-    test('the card is named and subtitled in the display language', () {
+    test('the card is named in the display language', () {
       final fire = computeFire(netWorth: 500000, annualExpenses: 30000, swrPct: 2.75);
-      for (final (s, name, target) in [(AppStrings.en, 'FIRE number', 'Target: '), (AppStrings.it, 'Numero FIRE', 'Obiettivo: ')]) {
-        final kpi = fireKpi(fire: fire, s: s, money: (v) => '${v.round()} €');
-        expect(kpi.name, name);
-        expect(kpi.subtitle, '$target${privacySlot(0)}');
-        expect(kpi.subtitleFigures, ['1090909 €']);
+      for (final (s, name) in [(AppStrings.en, 'FIRE number'), (AppStrings.it, 'Numero FIRE')]) {
+        expect(fireKpi(fire: fire, s: s).name, name);
       }
     });
 
     test('without expenses, the reason is in the display language too', () {
       final fire = computeFire(netWorth: 500000, annualExpenses: 0, swrPct: 2.75);
       expect(
-        fireKpi(fire: fire, s: AppStrings.en, money: (v) => '').description,
+        fireKpi(fire: fire, s: AppStrings.en).description,
         'Annual expenses are required to estimate the FIRE number.',
       );
       expect(
-        fireKpi(fire: fire, s: AppStrings.it, money: (v) => '').description,
+        fireKpi(fire: fire, s: AppStrings.it).description,
         'Servono spese annuali registrate per stimare il numero FIRE.',
       );
     });

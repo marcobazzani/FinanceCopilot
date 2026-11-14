@@ -109,11 +109,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         final investableNetWorth = sheet?.investableNetWorth ?? 0;
         final fireExpenses = yearlyExpenses ?? 0;
         final fire = computeFire(netWorth: investableNetWorth, annualExpenses: fireExpenses, swrPct: swrPct);
-        final moneyFmt = fmt.amountFormat(locale);
-        final currency = currencySymbol(allData?.baseCurrency ?? ieData?.baseCurrency ?? '');
-        final fireCard = sheet == null
-            ? HealthKpi(name: s.kpiFireNumber, description: s.noData)
-            : fireKpi(fire: fire, s: s, money: (amount) => '${moneyFmt.format(amount)} $currency');
+        final fireCard = sheet == null ? HealthKpi(name: s.kpiFireNumber, description: s.noData) : fireKpi(fire: fire, s: s);
         categories = [
           for (final cat in categories)
             if (cat.name == s.healthCatWealth) KpiCategory(name: cat.name, kpis: [...cat.kpis, fireCard]) else cat,
@@ -503,13 +499,6 @@ class _KpiCardState extends State<_KpiCard> {
             const SizedBox(height: 4),
             // KPI name
             Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
-            // Its words readable, the amounts it quotes masked.
-            if (kpi.subtitle case final subtitle?)
-              PrivacySentence(
-                subtitle,
-                figures: kpi.subtitleFigures,
-                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
-              ),
             if (widget.footnote case final footnote?) ...[
               const SizedBox(height: 2),
               Footnote(footnote),

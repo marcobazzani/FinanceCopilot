@@ -398,7 +398,6 @@ class AppStrings {
   String get fireAssetsLabel => _it ? 'Patrimonio investibile' : 'Investable net worth';
   String get fireGapLabel => _it ? 'Ancora da raggiungere' : 'Still to go';
   String get fireProgressLabel => _it ? 'Copertura target' : 'Target coverage';
-  String kpiFireTarget(String amount) => _it ? 'Obiettivo: $amount' : 'Target: $amount';
   String get fireResetDefault => _it ? 'Ripristina predefinito' : 'Reset default';
   String get fireSwrInvalid => _it ? 'Inserisci un numero positivo' : 'Enter a positive number';
   String get fireExpensesEstimateLabel => _it ? 'Spese degli ultimi 12 mesi' : 'Expenses of the last 12 months';
@@ -1872,6 +1871,13 @@ class AppStrings {
   String get cfThisYear => _it ? "Quest'anno" : 'This year';
   String get cfByAccount => _it ? 'Per conto' : 'By account';
   String get cfByCurrency => _it ? 'Per valuta' : 'By currency';
+  // The order of the Expenses list.
+  String cfSortedBy(String by) => _it ? 'Ordina per: $by' : 'Sort by: $by';
+  String get cfSortTotal => _it ? 'Totale' : 'Total';
+  String get cfSortChange => _it ? 'Variazione' : 'Change';
+  String get cfSortChangePercent => _it ? 'Variazione %' : 'Change %';
+  String get cfSortHighestFirst => _it ? 'Dal più alto' : 'Highest first';
+  String get cfSortLowestFirst => _it ? 'Dal più basso' : 'Lowest first';
   String get cfClearFilter => _it ? 'Cancella' : 'Clear';
   // The Expenses drill-down: a filter's values, added or removed.
   String get cfFilterEdit => _it ? 'Aggiungi o togli' : 'Add or remove';

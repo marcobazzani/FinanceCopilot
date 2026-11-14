@@ -75,6 +75,45 @@ bool _keeps(_SpendFilter f, SpendingEntry e) => switch (f.kind) {
 /// How the spending list groups its rows.
 enum _SpentBy { category, merchant, account, currency }
 
+/// What the spending list is ordered by: each row's amount, how much it
+/// changed against the days compared with, or by how much in percent.
+enum _SpentSort { total, change, percent }
+
+/// The spending list's order: [by] what, highest first unless not
+/// [descending]. For a change, highest first is the biggest increase first.
+typedef _SpentOrder = ({_SpentSort by, bool descending});
+
+/// The biggest amount first: the list's order until another is picked.
+const _SpentOrder _byTotal = (by: _SpentSort.total, descending: true);
+
+/// Compares list rows in [order], each against its figure in the days
+/// compared with ([before], by row key). A row with nothing to compare with
+/// (a saving plan) comes after those that have, by amount; a row those days
+/// did not have grew without bound. Ties go by amount.
+int Function(_ListRow, _ListRow) _rowOrder(_SpentOrder order, Map<Key, double> before) {
+  int byAmount(_ListRow a, _ListRow b) {
+    final c = b.amount.compareTo(a.amount);
+    return c != 0 ? c : (before[b.key] ?? 0).compareTo(before[a.key] ?? 0);
+  }
+
+  double? measure(_ListRow r) {
+    final then = before[r.key];
+    if (then == null) return null;
+    final d = r.amount - then;
+    if (order.by == _SpentSort.change) return d;
+    if (d.abs() < 0.005) return 0;
+    return then.abs() < 0.005 ? double.infinity : d / then;
+  }
+
+  return (a, b) {
+    if (order.by == _SpentSort.total) return order.descending ? byAmount(a, b) : byAmount(b, a);
+    final (x, y) = (measure(a), measure(b));
+    if (x == null || y == null) return x == null && y == null ? byAmount(a, b) : (x == null ? 1 : -1);
+    final c = order.descending ? y.compareTo(x) : x.compareTo(y);
+    return c != 0 ? c : byAmount(a, b);
+  };
+}
+
 /// [stats] of [period] for the overview or a screen, from the live data.
 _PeriodStats _statsFor(WidgetRef ref, CashFlowPeriod period, {required String language}) {
   final ieData = ref.watch(_incomeExpenseDataProvider).value;
@@ -724,6 +763,10 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
   /// around it, a filter set and cleared included.
   _SpentBy _spentBy = _SpentBy.category;
 
+  /// How the Expenses lists are ordered, the whole screen's and a narrowed
+  /// one's alike; it stays as the screen changes around it.
+  _SpentOrder _order = _byTotal;
+
   /// The bars of [stats]: its parts; on Savings a pair per month of it, or
   /// the period itself when it is a month or shorter.
   List<_Part> _barsOf(_PeriodStats stats) {
@@ -1084,6 +1127,8 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                           language: widget.language,
                           by: _narrowBy,
                           onBy: (by) => setState(() => _narrowBy = by),
+                          order: _order,
+                          onOrder: (o) => setState(() => _order = o),
                           onFilter: _addFilter,
                         )
                       : null,
@@ -1095,6 +1140,8 @@ class _StatScreenState extends ConsumerState<_StatScreen> {
                   language: widget.language,
                   by: _spentBy,
                   onBy: (by) => setState(() => _spentBy = by),
+                  order: _order,
+                  onOrder: (o) => setState(() => _order = o),
                   onFilter: _addFilter,
                 ),
                 _Stat.income => _IncomeList(stats: shown, locale: widget.locale, language: widget.language),
@@ -1219,26 +1266,69 @@ class _StepValuesDialogState extends ConsumerState<_StepValuesDialog> {
   }
 }
 
-/// A row's change against the days compared with, in percent: red up, green
-/// down (spending), "new" when those days had none of it.
+/// A row's change against the days compared with: by how much (an amount,
+/// position size, masked in privacy mode) and by how much in percent (shape,
+/// readable); red up, green down (spending), "new" in place of the percent
+/// when those days had none of it, "=" when nothing changed.
 class _RowChange extends ConsumerWidget {
   final double now;
   final double before;
   final String locale;
-  const _RowChange({required this.now, required this.before, required this.locale});
+  final NumberFormat money;
+  const _RowChange({required this.now, required this.before, required this.locale, required this.money});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final percent = NumberFormat.decimalPercentPattern(locale: locale, decimalDigits: 0);
     final d = now - before;
-    final same = d.abs() < 0.005;
-    final text = same
-        ? '='
-        : before.abs() < 0.005
-        ? '▲ ${s.cfChangeNew}'
-        : '${d > 0 ? '▲' : '▼'} ${percent.format((d / before).abs())}';
-    return _ChangeText(text: text, good: same ? null : d < 0);
+    if (d.abs() < 0.005) return const _ChangeText(text: '=', good: null);
+    final pct = before.abs() < 0.005 ? s.cfChangeNew : percent.format((d / before).abs());
+    return _ChangeText(text: '${d > 0 ? '▲' : '▼'} ${privacySlot(0)} ($pct)', figures: [money.format(d.abs())], good: d < 0);
+  }
+}
+
+/// The order of the Expenses list: by amount, by change or by change in
+/// percent (those two against days compared with, else not offered), highest
+/// or lowest first.
+class _SortMenu extends ConsumerWidget {
+  final _SpentOrder order;
+  final bool canCompare;
+  final ValueChanged<_SpentOrder> onChanged;
+  const _SortMenu({required this.order, required this.canCompare, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    String name(_SpentSort by) => switch (by) {
+      _SpentSort.total => s.cfSortTotal,
+      _SpentSort.change => s.cfSortChange,
+      _SpentSort.percent => s.cfSortChangePercent,
+    };
+    return PopupMenuButton<_SpentOrder>(
+      key: const Key('cfSpentSort'),
+      tooltip: s.cfSortedBy(name(order.by)),
+      icon: const Icon(Icons.sort),
+      onSelected: onChanged,
+      itemBuilder: (_) => [
+        for (final by in _SpentSort.values)
+          CheckedPopupMenuItem(
+            key: Key('cfSpentSort:${by.name}'),
+            value: (by: by, descending: order.descending),
+            checked: order.by == by,
+            enabled: by == _SpentSort.total || canCompare,
+            child: Text(name(by)),
+          ),
+        const PopupMenuDivider(),
+        for (final descending in [true, false])
+          CheckedPopupMenuItem(
+            key: Key('cfSpentSort:${descending ? 'highest' : 'lowest'}'),
+            value: (by: order.by, descending: descending),
+            checked: order.descending == descending,
+            child: Text(descending ? s.cfSortHighestFirst : s.cfSortLowestFirst),
+          ),
+      ],
+    );
   }
 }
 
@@ -1380,7 +1470,8 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
       minVerticalPadding: 12,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18),
       leading: r.avatar,
-      title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+      // Two lines for a long name: the figures on the right take their room.
+      title: Text(r.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
       subtitle: r.subtitle.isEmpty && widget.before[r.key] == null
           ? null
           : Row(
@@ -1411,7 +1502,7 @@ class _RowsCardState extends ConsumerState<_RowsCard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.before[r.key] case final b?) ...[
-                _RowChange(now: r.amount, before: b, locale: widget.locale),
+                _RowChange(now: r.amount, before: b, locale: widget.locale, money: money),
                 if (r.share != null) const SizedBox(width: 8),
               ],
               if (r.share case final share?) Text(shareOf(share), style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
@@ -1474,6 +1565,11 @@ class _SpentList extends ConsumerStatefulWidget {
   final _SpentBy by;
   final ValueChanged<_SpentBy>? onBy;
 
+  /// How the rows are ordered, and the switch to another order (in the
+  /// heading, by the grouping switch).
+  final _SpentOrder order;
+  final ValueChanged<_SpentOrder>? onOrder;
+
   /// Narrows the screen to a row's category, merchant, account or currency;
   /// without it a row opens its transactions.
   final ValueChanged<_SpendFilter>? onFilter;
@@ -1489,6 +1585,8 @@ class _SpentList extends ConsumerStatefulWidget {
     this.titled = true,
     this.by = _SpentBy.category,
     this.onBy,
+    this.order = _byTotal,
+    this.onOrder,
     this.onFilter,
     this.narrowed = false,
   });
@@ -1557,6 +1655,9 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
         for (final MapEntry(key: c, value: v) in sumsBy((e) => e.currency, from: otherEntries).entries) Key('cfSpendingCurrency:$c'): v.amount,
       },
     };
+    // Change and change in percent need days to compare with; without them
+    // the rows go by their amount, in the direction picked.
+    final order = before.isEmpty ? (by: _SpentSort.total, descending: widget.order.descending) : widget.order;
     final planRows = <_ListRow>[
       for (final plan in p.savingPlans)
         (
@@ -1579,80 +1680,77 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
       ...sumsBy((e) => e.accountId!, plans: false),
     };
     final byCurrency = {for (final e in otherEntries) e.currency: none, ...sumsBy((e) => e.currency)};
-    final rows =
-        <_ListRow>[
-          if (_by == _SpentBy.category) ...[
-            for (final id in {...p.byCategory.keys, ...?other?.byCategory.keys})
-              (
-                key: Key('cfSpendingCategory:$id'),
-                avatar: CategoryAvatar(category: category(id)),
-                title: categoryLabelFor(id, byId, s),
-                subtitle: s.cfTransactions(p.ids(id).length),
-                amount: p.amount(id),
-                share: total <= 0 ? 0.0 : p.amount(id) / total,
-                onTap: tapOf(
-                  (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)),
-                  (live) => live.sumOfDays(from, to).ids(id),
-                ),
-              ),
-            ...planRows,
-          ] else if (_by == _SpentBy.merchant)
-            for (final MapEntry(key: k, value: m) in merchants.entries)
-              (
-                key: Key('cfSpendingMerchant:$k'),
-                avatar: m.mainCategory == null
-                    ? RowIconBadge(icon: Icons.storefront_outlined, color: scheme.outline, tint: 0.15)
-                    : CategoryAvatar(category: category(m.mainCategory)),
-                title: m.name,
-                subtitle: s.cfTransactions(p.merchants[k]?.ids.length ?? 0),
-                amount: p.merchants[k]?.amount ?? 0.0,
-                share: total <= 0 ? 0.0 : (p.merchants[k]?.amount ?? 0.0) / total,
-                onTap: tapOf((
-                  kind: _FilterKind.merchant,
-                  key: k,
-                  label: m.name,
-                ), (live) => live.sumOfDays(from, to).merchants[k]?.ids ?? const []),
-              )
-          else if (_by == _SpentBy.account) ...[
-            for (final MapEntry(key: id, value: sum) in byAccount.entries)
-              (
-                key: Key('cfSpendingAccount:$id'),
-                avatar: RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
-                title: accounts[id] ?? '#$id',
-                subtitle: s.cfTransactions(sum.count),
-                amount: sum.amount,
-                share: total <= 0 ? 0.0 : sum.amount / total,
-                onTap: tapOf(
-                  (kind: _FilterKind.account, key: id, label: accounts[id] ?? '#$id'),
-                  (live) => [
-                    for (final e in live.entriesBetween(from, to))
-                      if (e.accountId == id) ?e.id,
-                  ],
-                ),
-              ),
-            ...planRows,
-          ] else
-            for (final MapEntry(key: code, value: sum) in byCurrency.entries)
-              (
-                key: Key('cfSpendingCurrency:$code'),
-                avatar: RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
-                title: code,
-                subtitle: s.cfTransactions(sum.count),
-                amount: sum.amount,
-                share: total <= 0 ? 0.0 : sum.amount / total,
-                onTap: tapOf(
-                  (kind: _FilterKind.currency, key: code, label: code),
-                  (live) => [
-                    for (final e in live.entriesBetween(from, to))
-                      if (e.currency == code) ?e.id,
-                  ],
-                ),
-              ),
-          // The biggest first; those the period did not have, by what they were.
-        ]..sort((a, b) {
-          final c = b.amount.compareTo(a.amount);
-          return c != 0 ? c : (before[b.key] ?? 0).compareTo(before[a.key] ?? 0);
-        });
+    final rows = <_ListRow>[
+      if (_by == _SpentBy.category) ...[
+        for (final id in {...p.byCategory.keys, ...?other?.byCategory.keys})
+          (
+            key: Key('cfSpendingCategory:$id'),
+            avatar: CategoryAvatar(category: category(id)),
+            title: categoryLabelFor(id, byId, s),
+            subtitle: s.cfTransactions(p.ids(id).length),
+            amount: p.amount(id),
+            share: total <= 0 ? 0.0 : p.amount(id) / total,
+            onTap: tapOf(
+              (kind: _FilterKind.category, key: id, label: categoryLabelFor(id, byId, s)),
+              (live) => live.sumOfDays(from, to).ids(id),
+            ),
+          ),
+        ...planRows,
+      ] else if (_by == _SpentBy.merchant)
+        for (final MapEntry(key: k, value: m) in merchants.entries)
+          (
+            key: Key('cfSpendingMerchant:$k'),
+            avatar: m.mainCategory == null
+                ? RowIconBadge(icon: Icons.storefront_outlined, color: scheme.outline, tint: 0.15)
+                : CategoryAvatar(category: category(m.mainCategory)),
+            title: m.name,
+            subtitle: s.cfTransactions(p.merchants[k]?.ids.length ?? 0),
+            amount: p.merchants[k]?.amount ?? 0.0,
+            share: total <= 0 ? 0.0 : (p.merchants[k]?.amount ?? 0.0) / total,
+            onTap: tapOf((
+              kind: _FilterKind.merchant,
+              key: k,
+              label: m.name,
+            ), (live) => live.sumOfDays(from, to).merchants[k]?.ids ?? const []),
+          )
+      else if (_by == _SpentBy.account) ...[
+        for (final MapEntry(key: id, value: sum) in byAccount.entries)
+          (
+            key: Key('cfSpendingAccount:$id'),
+            avatar: RowIconBadge(icon: Icons.account_balance_outlined, color: scheme.primary, tint: 0.15),
+            title: accounts[id] ?? '#$id',
+            subtitle: s.cfTransactions(sum.count),
+            amount: sum.amount,
+            share: total <= 0 ? 0.0 : sum.amount / total,
+            onTap: tapOf(
+              (kind: _FilterKind.account, key: id, label: accounts[id] ?? '#$id'),
+              (live) => [
+                for (final e in live.entriesBetween(from, to))
+                  if (e.accountId == id) ?e.id,
+              ],
+            ),
+          ),
+        ...planRows,
+      ] else
+        for (final MapEntry(key: code, value: sum) in byCurrency.entries)
+          (
+            key: Key('cfSpendingCurrency:$code'),
+            avatar: RowIconBadge(icon: Icons.currency_exchange, color: scheme.primary, tint: 0.15),
+            title: code,
+            subtitle: s.cfTransactions(sum.count),
+            amount: sum.amount,
+            share: total <= 0 ? 0.0 : sum.amount / total,
+            onTap: tapOf(
+              (kind: _FilterKind.currency, key: code, label: code),
+              (live) => [
+                for (final e in live.entriesBetween(from, to))
+                  if (e.currency == code) ?e.id,
+              ],
+            ),
+          ),
+      // In the order picked: by default the biggest first, and those the
+      // period did not have by what they were.
+    ]..sort(_rowOrder(order, before));
     // By category, the list adds up to the Expenses: the ledger's spending,
     // less the refunds received, and what no transaction shows.
     final footer = <_ListRow>[];
@@ -1706,24 +1804,40 @@ class _SpentListState extends ConsumerState<_SpentList> with _SpendingDrillDown<
       children: [
         Row(
           children: [
+            // The grouping takes the room the buttons leave, shortened on a
+            // narrow screen rather than pushing them out.
             if (widget.titled)
-              PopupMenuButton<_SpentBy>(
-                key: const Key('cfSpentBy'),
-                initialValue: _by,
-                onSelected: widget.onBy,
-                itemBuilder: (_) => [for (final by in _SpentBy.values) PopupMenuItem(value: by, child: Text(byName(by)))],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(byName(_by), style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-                      const Icon(Icons.keyboard_arrow_down),
-                    ],
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: PopupMenuButton<_SpentBy>(
+                    key: const Key('cfSpentBy'),
+                    initialValue: _by,
+                    onSelected: widget.onBy,
+                    itemBuilder: (_) => [for (final by in _SpentBy.values) PopupMenuItem(value: by, child: Text(byName(by)))],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              byName(_by),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const Icon(Icons.keyboard_arrow_down),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            const Spacer(),
+              )
+            else
+              const Spacer(),
+            if (widget.titled && widget.onOrder != null) _SortMenu(order: order, canCompare: before.isNotEmpty, onChanged: widget.onOrder!),
             TextButton(
               key: const Key('cfSpendingManage'),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CategoriesRulesScreen())),

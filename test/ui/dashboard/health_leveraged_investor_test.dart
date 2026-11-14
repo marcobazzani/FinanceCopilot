@@ -157,16 +157,22 @@ void main() {
     }
   });
 
-  testWidgets('the progress is the headline, the FIRE number the target under the name', (tester) async {
+  testWidgets('the progress is the headline; the FIRE number is not on the card, its info dialog spells it out', (tester) async {
     await seedLeveraged();
     await h.pump(tester);
     try {
       // Expenses of 35,032.26 over the last 12 months (on 10 March 2026: 21/31 of March 2025, then 3,000 a month
       // to February 2026) over a 2.75% withdrawal rate; 82,000 of investable net worth covers 6.44% of it.
       expect(inKpi(s.kpiFireNumber, '6.44%'), findsOneWidget);
-      expect(inKpi(s.kpiFireNumber, s.kpiFireTarget('1,273,900.29 €')), findsOneWidget);
       expect(inKpi(s.kpiFireNumber, s.ratingScarso), findsOneWidget);
+      expect(
+        find.descendant(of: h.kpiCard(s.kpiFireNumber), matching: find.textContaining('1,273,900')),
+        findsNothing,
+        reason: 'no target on the card',
+      );
       expect(find.text('FI Target Progress'), findsNothing);
+      await h.openInfo(tester, s.kpiFireNumber);
+      expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('1,273,900.29')), findsOneWidget);
     } finally {
       await h.unmount(tester);
     }
@@ -176,7 +182,6 @@ void main() {
     await seedLeveraged();
     await h.pump(tester, isPrivate: true);
     try {
-      expect(masked(inKpi(s.kpiFireNumber, '1,273,900.29 €')), isTrue, reason: 'an amount is position size');
       expect(masked(inKpi(s.kpiFireNumber, '6.44%')), isFalse, reason: 'a percentage is shape');
       for (final (kpi, value) in [
         (s.kpiLiquidityRatio, '39.02%'),
@@ -187,6 +192,13 @@ void main() {
       ]) {
         expect(masked(inKpi(kpi, value)), isFalse, reason: '$kpi: $value describes composition, not size');
       }
+      // The FIRE number, in the card's info dialog: an amount, position size.
+      await h.openInfo(tester, s.kpiFireNumber);
+      expect(
+        masked(find.descendant(of: find.byType(AlertDialog), matching: find.text('1,273,900.29'))),
+        isTrue,
+        reason: 'an amount is position size',
+      );
     } finally {
       await h.unmount(tester);
     }

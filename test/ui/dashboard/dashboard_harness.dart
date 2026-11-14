@@ -103,8 +103,9 @@ class DashboardHarness {
     String locale = 'en_US',
     bool isPrivate = false,
     List<Override> overrides = const [],
+    Size size = const Size(1400, 2400),
   }) async {
-    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
